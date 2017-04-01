@@ -42,14 +42,22 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CHALLENGES\codersStrikeBack.cs" />
+    <Compile Include="CHALLENGES\ghostInTheCell.cs" />
     <Compile Include="codersStrikeBack.cs" />
+    <Compile Include="HELPERS\PriorityQueue.cs" />
+    <Compile Include="PRACTICE\solution.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="CHALLENGES\tron.py" />
     <Content Include="csb.cpp" />
+    <Content Include="HELPERS\bsc.cpp" />
+    <Content Include="PRACTICE\dontPanic.py" />
+    <Content Include="PRACTICE\shadowsOfTheNight.py" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
