@@ -34,7 +34,7 @@ internal class Player
     private static void Main(string[] args)
     {
         string[] inputs;
-        //_laps = int.Parse(Console.ReadLine());
+        _laps = int.Parse(Console.ReadLine());
         _checkpointCount = int.Parse(Console.ReadLine());
         checkpoints = new Checkpoint[_checkpointCount];
         for (int i = 0; i < _checkpointCount; i++)
@@ -59,7 +59,7 @@ internal class Player
         var me = new SearchBot();
         me.Opponents.Add(opp);
         me.Opponents.Add(oppReflex);
-        var tests = int.Parse(Console.ReadLine());
+
         while (true)
         {
             round++;
@@ -70,10 +70,10 @@ internal class Player
                 int y = int.Parse(inputs[1]); // y position of your pod
                 int vx = int.Parse(inputs[2]); // x speed of your pod
                 int vy = int.Parse(inputs[3]); // y speed of your pod
-                float angle = float.Parse(inputs[4]); // angle of your pod
+                int angle = int.Parse(inputs[4]); // angle of your pod
                 int nextCheckPointId = int.Parse(inputs[5]); // next check point id of your pod
                 if (round == 0 && i > 1 && angle > -1) is_p2 = true;
-                Pods[i].Update(x, y, vx, vy, (int)angle, nextCheckPointId);
+                Pods[i].Update(x, y, vx, vy, angle, nextCheckPointId);
             }
 
             //Console.Error.WriteLine("DTC: {0} {1}", Pods[0].Distance(checkpoints[Pods[0].CheckpointId]), Pods[0].CheckpointId);
@@ -82,15 +82,11 @@ internal class Player
             int timeLimit = round == 0 ? 980 : 142;
             opp.Solve(timeLimit * 0.15);
             me.Solve(timeLimit, round > 0);
-            //Console.Error.WriteLine("Moving towards {0} at angle {1} : {2}\n{3}", me.Runner().CheckpointId, me.Runner().Angle, me.sol.Angle[0], string.Join(",", me.sol.Angle));
-            //if (round > 0) Console.Error.WriteLine("Avg iterations {0}; avg sims {1}", _solutionsTried / round, _solutionsTried * Chromosones / round);
+            Console.Error.WriteLine("Moving towards {0} at angle {1} : {2}\n{3}", me.Runner().CheckpointId, me.Runner().Angle, me.sol.Angle[0], string.Join(",",me.sol.Angle));
+            if (round > 0) Console.Error.WriteLine("Avg iterations {0}; avg sims {1}", _solutionsTried / round, _solutionsTried * Chromosones / round);
 
             me.sol.Output(me.sol.Thrust[0], me.sol.Angle[0], Pods[0]);
             me.sol.Output(me.sol.Thrust[Chromosones], me.sol.Angle[Chromosones], Pods[1]);
-            Console.ReadLine();
-            Console.ReadLine();
-            Console.WriteLine(Console.ReadLine());
-            Console.WriteLine(Console.ReadLine());
         }
     }
 
@@ -198,7 +194,7 @@ internal class Player
             _score = -1;
         }
 
-        internal void Play()
+              internal void Play()
         {
             double t = 0.0;
             while (t < 1.0)
@@ -604,7 +600,7 @@ internal class Player
             else
             {
                 bestSolution = sol = new Solution();
-
+                
                 if (round == 0 && Pods[Id].Distance(checkpoints[1]) > 4000)
                 {
                     bestSolution.Thrust[0] = 650;
@@ -741,9 +737,9 @@ internal class Player
             if (a < 0.00001) return null;
 
             var b = -2.0 * (x * vx + y * vy);
+            
 
-
-
+            
             var delta = b * b - 4.0 * a * (x * x + y * y - sumOfRadii);
 
             if (delta < 0.0) return null;
