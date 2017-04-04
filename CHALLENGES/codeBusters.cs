@@ -8,7 +8,7 @@ using System.Collections.Generic;
 /**
  * Send your busters out into the fog to trap ghosts and bring them home!
  **/
-namespace CodeBusters
+namespace CodeBuster
 {
 
     class Player
@@ -135,7 +135,7 @@ namespace CodeBusters
                 if (StunTimer == 0)
                 {
                     var busters = activeEntities.OfType<Buster>()
-                                                .Where(b => b.Type != myTeamId && Distance(b) <= BustRangeMax);                    
+                                                .Where(b => b.Type != myTeamId && Distance(b) <= BustRangeMax);
                     var buster = busters.FirstOrDefault();
                     if (buster != null && buster.State != BusterState.Stunned)
                     {
@@ -159,33 +159,33 @@ namespace CodeBusters
                         Console.WriteLine(string.Format("MOVE {0} {1}", ghost.X, ghost.Y));
                         return;
                     }
-                }          	
+                }
 
                 double destX = 0;
                 double destY = 0;
                 var nextTiles = tiles.Where(t => t.Value == (int)MapState.Unexplored || t.Value == (int)MapState.Ghost)
-                					 .OrderBy(t => t.Distance(this));
+                					 .OrderBy(t => t.Distance(this)).FirstOrDefault();
                 //Console.Error.WriteLine(string.Format("TILES: {0}", string.Join(";", nextTiles)));
 
                 if (nextTiles != null)
                 {
-                    destX = nextTiles.First().X;
-                    destY = nextTiles.First().Y;
+                    destX = nextTiles.X;
+                    destY = nextTiles.Y;
+                    //nextTiles.Value =  (int)MapState.Empty;
                 }
                 else
                 {
                 	if (Type == 0)
             		{
-	                    destX = Math.Min(0, X - MoveLength);
-	                    destY = Math.Min(0, Y - MoveLength);
+	                    destX = Math.Max(0, X - MoveLength);
+	                    destY = Math.Max(0, Y - MoveLength);
                     }
 	                else
-	                {                
-                    	destX = Math.Min(0, X + MoveLength);
+	                {
+                    	destX = Math.Min(MapWidth, X + MoveLength);
                     	destY = Math.Min(MapHeight, Y + MoveLength);
 	                }
                 }
-                
 
                 Console.WriteLine(string.Format("MOVE {0} {1}", destX, destY));
             }
@@ -202,16 +202,16 @@ namespace CodeBusters
             int ghostCount = int.Parse(Console.ReadLine()); // the amount of ghosts on the map
             myTeamId = int.Parse(Console.ReadLine()); // if this is 0, your base is on the top left of the map, if it is one, on the bottom right
 
-            for (int i = 0; i < MapWidth; i += BustRangeMax)
+            for (int i = BustRangeMax; i < MapWidth; i += BustRangeMax)
             {
-                for (int j = 0; j < MapHeight; j += BustRangeMax)
+                for (int j = BustRangeMax; j < MapHeight; j += BustRangeMax)
                 {
                     var state = MapState.Unexplored;
                     if ((i < ReleaseArea && j < ReleaseArea) || (i > MapWidth - ReleaseArea || j > MapWidth - ReleaseArea))
                         state = MapState.Base;
                     else
                         state = MapState.Unexplored;
-                    var tile = new Entity(-1, i, j, -9, (int)state);
+                    var tile = new Entity(-1, i, j, -9, (int)state, BusterState.Idle);
                     tile.Radius = 900;
                     tiles.Add(tile);
                 }
@@ -235,7 +235,7 @@ namespace CodeBusters
                     BusterState state = (BusterState)Enum.Parse(typeof(BusterState), inputs[4]); // For busters: 0=idle, 1=carrying a ghost.
                     int val = int.Parse(inputs[5]); // For busters: Ghost id being carried. For ghosts: number of busters attempting to trap this ghost.
                     if (entityType == -1)
-                    {                        
+                    {
                         var ghost = activeEntities.OfType<Ghost>().FirstOrDefault(e => e.Id == entityId);
                         if (ghost == null)
                         {
@@ -247,7 +247,7 @@ namespace CodeBusters
                             ghost.X = x;
                             ghost.Y = y;
                             ghost.Value = val;
-                            ghost.BusterState = state;
+                            ghost.State = state;
                         }
 
                         foreach (var tile in tiles.Where(t => t.Distance(ghost) < t.Radius))
@@ -260,7 +260,7 @@ namespace CodeBusters
                         var buster = activeEntities.OfType<Buster>().FirstOrDefault(e => e.Id == entityId);
                         if (buster == null)
                         {
-                            buster = new Buster(entityId, entityType, x, y, state, val);  
+                            buster = new Buster(entityId, entityType, x, y, state, val);
                             activeEntities.Add(buster);
                         }
                         else
@@ -286,7 +286,7 @@ namespace CodeBusters
                         case BusterState.Carrying:
                             buster.ReturnToBase();
                             break;
-                        case BusterState.Idle: 
+                        case BusterState.Idle:
                         case BusterState.Stunned:
                             buster.Search();
                             break;
@@ -296,7 +296,7 @@ namespace CodeBusters
                     }
                 }
 
-                activeEntities.RemoveAll(e => e.Type == -1);  
+                activeEntities.RemoveAll(e => e.Type == -1);
             }
         }
     }
