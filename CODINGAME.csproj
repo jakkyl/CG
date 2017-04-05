@@ -42,11 +42,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CHALLENGES\codeBusters.cs" />
     <Compile Include="CHALLENGES\codersStrikeBack.cs" />
     <Compile Include="CHALLENGES\ghostInTheCell.cs" />
     <Compile Include="codersStrikeBack.cs" />
     <Compile Include="HELPERS\PriorityQueue.cs" />
-    <Compile Include="PRACTICE\solution.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
