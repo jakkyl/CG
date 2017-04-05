@@ -10,8 +10,9 @@ using System.Linq;
 /* 4500/27000
  * Moves from List to Arry
  *   5500, 32700
- * 
+ *
  * */
+
 internal class Player
 {
     private const int Chromosones = 4;
@@ -79,10 +80,11 @@ internal class Player
             //Console.Error.WriteLine("DTC: {0} {1}", Pods[0].Distance(checkpoints[Pods[0].CheckpointId]), Pods[0].CheckpointId);
 
             _stopwatch = Stopwatch.StartNew();
-            int timeLimit = round == 0 ? 980 : 142;
+            //int timeLimit = round == 0 ? 980 : 142;
+            int timeLimit = round == 0 ? 15 : 15;
             opp.Solve(timeLimit * 0.15);
             me.Solve(timeLimit, round > 0);
-            Console.Error.WriteLine("Moving towards {0} at angle {1} : {2}\n{3}", me.Runner().CheckpointId, me.Runner().Angle, me.sol.Angle[0], string.Join(",",me.sol.Angle));
+            Console.Error.WriteLine("Moving towards {0} at angle {1} : {2}\n{3}", me.Runner().CheckpointId, me.Runner().Angle, me.sol.Angle[0], string.Join(",", me.sol.Angle));
             if (round > 0) Console.Error.WriteLine("Avg iterations {0}; avg sims {1}", _solutionsTried / round, _solutionsTried * Chromosones / round);
 
             me.sol.Output(me.sol.Thrust[0], me.sol.Angle[0], Pods[0]);
@@ -194,7 +196,7 @@ internal class Player
             _score = -1;
         }
 
-              internal void Play()
+        internal void Play()
         {
             double t = 0.0;
             while (t < 1.0)
@@ -265,13 +267,10 @@ internal class Player
     //        Thrust = thrust;
     //    }
 
-    //    public Move()
-    //    {
-    //    }
+    // public Move() { }
 
-    //    public int Thrust { get; set; }
-    //    public double Angle { get; set; }
-    //    public bool Shield { get; set; }
+    // public int Thrust { get; set; } public double Angle { get; set; } public bool Shield { get;
+    // set; }
 
     //    public override string ToString()
     //    {
@@ -325,9 +324,11 @@ internal class Player
         public int Checked { get; set; }
         public int Timeout { get; set; }
         public int Thrust { get; set; }
+
         //public Solution Solution { get; set; }
         //public List<Move> Moves { get; set; }
         public Pod Partner { get; set; }
+
         public bool HasBoost { get; internal set; }
 
         private int _nextAngle = -1;
@@ -514,10 +515,15 @@ internal class Player
         }
     }
 
-    class Bot
+    private class Bot
     {
         public int Id { get; set; }
-        public Bot() { Id = 0; }
+
+        public Bot()
+        {
+            Id = 0;
+        }
+
         public Bot(int id)
         {
             Id = id;
@@ -527,6 +533,7 @@ internal class Player
         {
             return Runner(Pods[Id], Pods[Id + 1]);
         }
+
         internal Pod Runner(Pod pod0, Pod pod1)
         {
             return pod0.Score() - pod1.Score() >= -1000 ? pod0 : pod1;
@@ -536,18 +543,28 @@ internal class Player
         {
             return Blocker(Pods[Id], Pods[Id + 1]);
         }
+
         internal Pod Blocker(Pod pod0, Pod pod1)
         {
             return Runner(pod0, pod1).Partner;
         }
 
-        internal virtual void Move() { }
+        internal virtual void Move()
+        {
+        }
     }
 
-    class ReflexBot : Bot
+    private class ReflexBot : Bot
     {
-        public ReflexBot() : base() { }
-        public ReflexBot(int id) : base(id) { }
+        public ReflexBot()
+            : base()
+        {
+        }
+
+        public ReflexBot(int id)
+            : base(id)
+        {
+        }
 
         internal override void Move()
         {
@@ -567,16 +584,24 @@ internal class Player
 
             pod.Apply(thrust, angle);
         }
-
     }
 
-    class SearchBot : Bot
+    private class SearchBot : Bot
     {
         public Solution sol { get; set; }
         public List<Bot> Opponents { get; set; }
 
-        public SearchBot() : base() { Opponents = new List<Bot>(); }
-        public SearchBot(int id) : base(id) { Opponents = new List<Bot>(); }
+        public SearchBot()
+            : base()
+        {
+            Opponents = new List<Bot>();
+        }
+
+        public SearchBot(int id)
+            : base(id)
+        {
+            Opponents = new List<Bot>();
+        }
 
         internal void Move(Solution sol)
         {
@@ -600,7 +625,7 @@ internal class Player
             else
             {
                 bestSolution = sol = new Solution();
-                
+
                 if (round == 0 && Pods[Id].Distance(checkpoints[1]) > 4000)
                 {
                     bestSolution.Thrust[0] = 650;
@@ -680,6 +705,7 @@ internal class Player
             return score;
         }
     }
+
     internal class Checkpoint : Unit
     {
         public Checkpoint(int id, double x, double y)
@@ -713,7 +739,9 @@ internal class Player
 
         private double[] cache = new double[4];
 
-        public virtual void Bounce(Unit unit) { }
+        public virtual void Bounce(Unit unit)
+        {
+        }
 
         public Collision Collision(Unit unit)
         {
@@ -726,7 +754,6 @@ internal class Player
             //already touching
             //if (distance < sumOfRadii) return new Collision(this, unit, 0.0);
 
-
             // We place ourselves in the reference frame of u. u is therefore stationary and is at (0,0)
             var x = X - unit.X;
             var y = Y - unit.Y;
@@ -737,9 +764,7 @@ internal class Player
             if (a < 0.00001) return null;
 
             var b = -2.0 * (x * vx + y * vy);
-            
 
-            
             var delta = b * b - 4.0 * a * (x * x + y * y - sumOfRadii);
 
             if (delta < 0.0) return null;
@@ -748,7 +773,6 @@ internal class Player
             if (t <= 0.0 || t > 1.0) return null;
 
             return new Collision(this, unit, t);
-
 
             /*
             Point up = new Point(0, 0);
@@ -896,7 +920,7 @@ internal class Player
         }
     }
 
-    static int g_seed = 42;
+    private static int g_seed = 42;
 
     internal class MyRandom
     {
