@@ -16,7 +16,7 @@ using System.Linq;
 internal class Player
 {
     private const int Chromosones = 6;
-    private const int MaxThrust = 100;
+    private const int MaxThrust = 200;
     private const double ShieldProbability = 10.0;
 
     private static int _laps = 0;
@@ -60,7 +60,7 @@ internal class Player
         var me = new SearchBot();
         me.Opponents.Add(opp);
         me.Opponents.Add(oppReflex);
-        
+
         while (true)
         {
             round++;
@@ -79,7 +79,7 @@ internal class Player
                 if (nextCheckPointId == -1) nextCheckPointId = 1;
                 Pods[i].Update(x, y, vx, vy, angle, nextCheckPointId);
             }
-           
+
             //Console.Error.WriteLine("DTC: {0} {1}", Pods[0].Distance(checkpoints[Pods[2].CheckpointId]), Pods[2].CheckpointId);
 
             _stopwatch = Stopwatch.StartNew();
@@ -404,9 +404,9 @@ internal class Player
         }
 
         public override void Bounce(Unit unit)
-        {            
+        {
             if (unit is Checkpoint)
-            {                
+            {
                 Checked++;
                 Timeout = Partner.Timeout = 100;
                 CheckpointId = (CheckpointId + 1) % _checkpointCount;
@@ -772,7 +772,6 @@ internal class Player
             var a = vx * vx + vy * vy;
             if (a < 0.00001) return null;
 
-
             var b = -2.0 * (dx * vx + dy * vy);
 
             var delta = b * b - 4.0 * a * (dx * dx + dy * dy - sumOfRadii);
@@ -780,9 +779,9 @@ internal class Player
             if (delta < 0.0) return null;
 
             var t = (b - Math.Sqrt(delta)) * (1.0 / (2.0 * a));
-                //Console.Error.WriteLine("Bounce {0} {1} - {2}", this, unit, t);
+            //Console.Error.WriteLine("Bounce {0} {1} - {2}", this, unit, t);
             if (t <= 0.0 || t > 1.0) return null;
-            
+
             return new Collision(this, unit, t);
 
             /*

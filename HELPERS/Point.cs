@@ -48,6 +48,16 @@ namespace Solution.HELPERS
             return new Point(cX, cY);
         }
 
+        public double Dot(Point p)
+        {
+            return X * p.X + p.Y * Y;
+        }
+
+        public Point Subtract(Point p)
+        {
+            return new Point(p.X - X, p.Y - Y);
+        }
+
         public override string ToString()
         {
             return string.Format("[{0},{1}]", X, Y);
