@@ -15,7 +15,7 @@ using System.Linq;
 
 internal class Player
 {
-    private const int Chromosones = 4;
+    private const int Chromosones = 6;
     private const int MaxThrust = 100;
     private const double ShieldProbability = 10.0;
 
@@ -60,13 +60,14 @@ internal class Player
         var me = new SearchBot();
         me.Opponents.Add(opp);
         me.Opponents.Add(oppReflex);
-
+        
         while (true)
         {
             round++;
             for (int i = 0; i < 4; i++)
             {
-                inputs = Console.ReadLine().Split(' ');
+                var s = Console.ReadLine();
+                inputs = s.Split(' ');
                 int x = int.Parse(inputs[0]); // x position of your pod
                 int y = int.Parse(inputs[1]); // y position of your pod
                 int vx = int.Parse(inputs[2]); // x speed of your pod
@@ -74,17 +75,19 @@ internal class Player
                 int angle = int.Parse(inputs[4]); // angle of your pod
                 int nextCheckPointId = int.Parse(inputs[5]); // next check point id of your pod
                 if (round == 0 && i > 1 && angle > -1) is_p2 = true;
+                //Console.Error.WriteLine("INPUT: {0} {1}", i, s);
+                if (nextCheckPointId == -1) nextCheckPointId = 1;
                 Pods[i].Update(x, y, vx, vy, angle, nextCheckPointId);
             }
-
-            //Console.Error.WriteLine("DTC: {0} {1}", Pods[0].Distance(checkpoints[Pods[0].CheckpointId]), Pods[0].CheckpointId);
+           
+            //Console.Error.WriteLine("DTC: {0} {1}", Pods[0].Distance(checkpoints[Pods[2].CheckpointId]), Pods[2].CheckpointId);
 
             _stopwatch = Stopwatch.StartNew();
-            //int timeLimit = round == 0 ? 980 : 142;
-            int timeLimit = round == 0 ? 15 : 15;
+            int timeLimit = round == 0 ? 980 : 142;
             opp.Solve(timeLimit * 0.15);
             me.Solve(timeLimit, round > 0);
-            Console.Error.WriteLine("Moving towards {0} at angle {1} : {2}\n{3}", me.Runner().CheckpointId, me.Runner().Angle, me.sol.Angle[0], string.Join(",", me.sol.Angle));
+            Console.Error.WriteLine("Moving towards {0} at angle {1} : {2}\n{3}\n{4}", me.Runner().CheckpointId, me.Runner().Angle, me.sol.Angle[0], string.Join(",", me.sol.Angle),
+                me.sol.EndPoint(me.sol.Thrust[0], me.sol.Angle[0], Pods[0]));
             if (round > 0) Console.Error.WriteLine("Avg iterations {0}; avg sims {1}", _solutionsTried / round, _solutionsTried * Chromosones / round);
 
             me.sol.Output(me.sol.Thrust[0], me.sol.Angle[0], Pods[0]);
@@ -400,6 +403,7 @@ internal class Player
             //Console.Error.WriteLine("Bounce {0} {1}", Id, unit.Id);
             if (unit is Checkpoint)
             {
+                Console.Error.WriteLine("Checkpoint!");
                 Checked++;
                 Timeout = Partner.Timeout = 100;
                 CheckpointId = (CheckpointId + 1) % _checkpointCount;
@@ -457,7 +461,8 @@ internal class Player
 
         internal double Score()
         {
-            //Console.Error.WriteLine("{0} {1} {2} {3} {4} {5}", Checked, Distance(Checkpoint), Checkpoint.X, Checkpoint.Y, X, Y);
+            //if (Id == 0)
+            //    Console.Error.WriteLine("{0} {1} {2} {3} {4} {5}", Checked, Distance(checkpoints[CheckpointId]), checkpoints[CheckpointId].X, checkpoints[CheckpointId].Y, X, Y);
             return Checked * 50000 - Distance(checkpoints[CheckpointId]);
         }
 
@@ -644,10 +649,10 @@ internal class Player
 
                 if (GetScore(child) > GetScore(bestSolution))
                 {
-                    //Console.Error.WriteLine("2: {0}", _stopwatch.ElapsedMilliseconds);
                     bestSolution = child;
                 }
             }
+            sol = bestSolution;
         }
 
         private double GetScore(Solution sol)
@@ -677,6 +682,7 @@ internal class Player
                 if (turn == 0) score += 0.1 * Evaluation();
                 turn++;
             }
+            //if (Id == 0) Console.Error.WriteLine("", sol.EndPoint())
             score += 0.9 * Evaluation();
             for (int i = 0; i < 4; i++) Pods[i].Load();
             turn = 0;
@@ -917,6 +923,11 @@ internal class Player
             }
 
             return new Point(cX, cY);
+        }
+
+        public override string ToString()
+        {
+            return string.Format("[{0},{1}]", X, Y);
         }
     }
 
