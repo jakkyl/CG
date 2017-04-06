@@ -212,6 +212,8 @@ internal class Player
                     for (int j = i + 1; j < 4; j++)
                     {
                         var col = Pods[i].Collision(Pods[j]);
+                        //if (col != null)
+                        //    Console.Error.WriteLine("Bounce {0} {1}", col.T, t);
                         if (col != null && col.T + t < 1.0 && (firstCol == null || col.T < firstCol.T))
                         {
                             firstCol = col;
@@ -219,6 +221,8 @@ internal class Player
                     }
 
                     var colCP = Pods[i].Collision(checkpoints[Pods[i].CheckpointId]);
+                    //if (colCP!=null)
+                    //    Console.Error.WriteLine("Bounce {0} {1}", colCP.T, t);
                     if (colCP != null && colCP.T + t < 1.0 && (firstCol == null || colCP.T < firstCol.T))
                     {
                         firstCol = colCP;
@@ -235,6 +239,7 @@ internal class Player
                 }
                 else
                 {
+                    //Console.Error.WriteLine("Bounce {0} {1}", firstCol.UnitA.GetType(), firstCol.UnitB.GetType());
                     for (int i = 0; i < 4; i++)
                     {
                         Pods[i].Move(firstCol.T);
@@ -399,11 +404,9 @@ internal class Player
         }
 
         public override void Bounce(Unit unit)
-        {
-            //Console.Error.WriteLine("Bounce {0} {1}", Id, unit.Id);
+        {            
             if (unit is Checkpoint)
-            {
-                Console.Error.WriteLine("Checkpoint!");
+            {                
                 Checked++;
                 Timeout = Partner.Timeout = 100;
                 CheckpointId = (CheckpointId + 1) % _checkpointCount;
@@ -702,7 +705,7 @@ internal class Player
             if (my_runner.Timeout <= 0) return -1e7;
             if (opp_runner.Timeout <= 0) return 1e7;
             if (opp_runner.Checked == _laps * _checkpointCount || opp_blocker.Checked == _laps * _checkpointCount) return -1e7;
-            if (my_runner.Checked == _laps * _checkpointCount || my_blocker.Checked == _laps * _checkpointCount) return 1e7;
+            //if (my_runner.Checked >= _laps * _checkpointCount || my_blocker.Checked >= _laps * _checkpointCount) return 1e7;
 
             var score = my_runner.Score() - opp_runner.Score();
             score -= my_blocker.Distance(checkpoints[opp_runner.CheckpointId]);
@@ -755,29 +758,31 @@ internal class Player
             if (VelocityX == unit.VelocityX && VelocityY == unit.VelocityY) return null;
 
             var distance = Distance2(unit);
-            var sumOfRadii = unit is Checkpoint ? 357604 : 640000;//Math.Pow(Radius + unit.Radius, 2);
+            var sumOfRadii = unit is Checkpoint ? 360000 : 480000;//Math.Pow(Radius + unit.Radius, 2);
 
             //already touching
             //if (distance < sumOfRadii) return new Collision(this, unit, 0.0);
 
             // We place ourselves in the reference frame of u. u is therefore stationary and is at (0,0)
-            var x = X - unit.X;
-            var y = Y - unit.Y;
-            Point myp = new Point(x, y);
+            var dx = X - unit.X;
+            var dy = Y - unit.Y;
+            Point myp = new Point(dx, dy);
             var vx = VelocityX - unit.VelocityX;
             var vy = VelocityY - unit.VelocityY;
             var a = vx * vx + vy * vy;
             if (a < 0.00001) return null;
 
-            var b = -2.0 * (x * vx + y * vy);
 
-            var delta = b * b - 4.0 * a * (x * x + y * y - sumOfRadii);
+            var b = -2.0 * (dx * vx + dy * vy);
+
+            var delta = b * b - 4.0 * a * (dx * dx + dy * dy - sumOfRadii);
 
             if (delta < 0.0) return null;
 
-            var t = (b - Math.Sqrt(delta)) * (1.0 / 2.0 * a);
+            var t = (b - Math.Sqrt(delta)) * (1.0 / (2.0 * a));
+                //Console.Error.WriteLine("Bounce {0} {1} - {2}", this, unit, t);
             if (t <= 0.0 || t > 1.0) return null;
-
+            
             return new Collision(this, unit, t);
 
             /*
