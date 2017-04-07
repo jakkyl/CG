@@ -18,11 +18,11 @@ namespace MarsLander
         private const double Gravity = 3.711;
         private const double MaxVerticalSpeed = -40.0;
         private const double MaxHorizontalSpeed = 20.0;
-        private const int Depth = 150;
+        private const int Depth = 75;
         private const int Population = 5;
         private const int maxDist = 15232;
 
-        private static Stopwatch stopwatch = new Stopwatch();
+        private static Stopwatch stopwatch ;
         private static IList<Point> map = new List<Point>();
         private static Point[] landingZone = new Point[2];
 
@@ -125,10 +125,10 @@ namespace MarsLander
                 var rotRads = -Rotation * Math.PI / 180;
                 var sin = Math.Sin(rotRads) * Power;
                 var cos = Math.Cos(rotRads) * Power - Gravity;
-                HorizontalVelocity += sin;
-                VerticalVelocity += cos;
                 X += HorizontalVelocity - 0.5 * sin;
                 Y += VerticalVelocity - 0.5 * cos;
+                HorizontalVelocity += sin;
+                VerticalVelocity += cos;
                 //X += HorizontalVelocity - 0.5 * sin;
                 //Y += VerticalVelocity + 0.5 * cos;
                 //HorizontalVelocity *= sin;
@@ -182,7 +182,7 @@ namespace MarsLander
 
             public void Solve(int timelimit, bool seed)
             {
-                Solution bestSolution = null;
+                Solution bestSolution;
                 if (seed)
                 {
                     bestSolution = sol;
@@ -192,11 +192,12 @@ namespace MarsLander
                 {
                     bestSolution = new Solution();
                 }
-                bestSolution.score = GetScore(bestSolution);
+                GetScore(bestSolution);
 
+                Solution child;
                 while (stopwatch.ElapsedMilliseconds < timelimit)
                 {
-                    var child = bestSolution.Clone();
+                    child = bestSolution.Clone();
                     child.Mutate();
 
                     if (GetScore(child) > GetScore(bestSolution))
@@ -226,9 +227,10 @@ namespace MarsLander
                     }
 
                     solution.Time = t;
-                    bool inLandingZone = X > landingZone[0].X + 50 && X < landingZone[1].X;
+                    bool inLandingZone = X > landingZone[0].X && X < landingZone[1].X;
                     if (col && inLandingZone)
                     {
+                        //Console.Error.WriteLine("LANDING ZONE");
                         //crash landing
                         if (VerticalVelocity <= MaxVerticalSpeed || Math.Abs(HorizontalVelocity) >= MaxHorizontalSpeed)
                         {
@@ -242,11 +244,11 @@ namespace MarsLander
                             }
                             if (VerticalVelocity < MaxVerticalSpeed)
                             {
-                                dY = (MaxVerticalSpeed - VerticalVelocity) * 2;
+                                dY = (MaxVerticalSpeed - VerticalVelocity) * 0.5;
                             }
                             if (Rotation != 0)
                             {
-                                dA = Math.Abs(Rotation) * .5;
+                                dA = Rotation * .5;
                             }
                             solution.score = 200 - dX - dY - dA;
                         }
@@ -258,11 +260,12 @@ namespace MarsLander
                     }
                     else
                     {
-                        var currentSpeed = Math.Sqrt(Math.Pow(HorizontalVelocity, 2) + Math.Pow(VerticalVelocity, 2));
+                        // var currentSpeed = Math.Sqrt(Math.Pow(HorizontalVelocity, 2) + Math.Pow(VerticalVelocity, 2));
                         var distanceToZone = Distance(landingZoneCenter);
-                        solution.score = 100 - (100 * distanceToZone / maxDist);
-                        var speedPenalty = 0.1 * Math.Max(currentSpeed - 100, 0);
-                        solution.score -= speedPenalty;
+                        solution.score = -distanceToZone;
+                        // solution.score = 100 - (100 * distanceToZone / maxDist);
+                        // var speedPenalty = 0.1 * Math.Max(currentSpeed - 100, 0);
+                        // solution.score -= speedPenalty;
                     }
 
                     solutionsTried++;
@@ -275,13 +278,13 @@ namespace MarsLander
 
             private bool CheckCollisions()
             {
-                for (int i = 1; i < map.Count; i++)
+                for (int i = 0; i < map.Count-1; i++)
                 {
                     //var a = map[i - 1];
                     //var b = map[i];
                     //var p = (b.X - a.X) * (Y - a.Y) - (b.Y - a.Y) * (X - a.X);
-                    var p1 = map[i - 1];
-                    var p2 = map[i];
+                    var p1 = map[i];
+                    var p2 = map[i+1];
                     var line = new Point(p2.X - p1.X, p2.Y - p1.Y);
                     //var distance = new Point(X - b.X, Y - b.Y);
                     //var dot = line.X * X + line.Y * Y;
@@ -308,7 +311,7 @@ namespace MarsLander
                     var v = line;
                     var a = v.Dot(v);
                     var b = 2 * v.Dot(p1.Subtract(this));
-                    var c = p1.Dot(p1) + this.Dot(this) - 2 * p1.Dot(this) - 1;
+                    var c = p1.Dot(p1) + this.Dot(this) - 2 * p1.Dot(this) - 500;
                     var disc = b * b - 4 * a * c;
 
                     //Console.Error.WriteLine("COL1: {2} {0} {1}", new Point(ex, ey), lec, i);
@@ -323,8 +326,9 @@ namespace MarsLander
                     else
                     {
                         var sDisc = Math.Sqrt(disc);
-                        double t1 = (-b - disc) / (2 * a);
-                        double t2 = (-b + disc) / (2 * a);
+                        var qA = 1/(2*a);
+                        double t1 = (-b - disc) *qA;
+                        double t2 = (-b + disc) *qA;
 
                         //Console.Error.WriteLine("COL: {0} {1} {2} {3}", this, t1, t2, i);
                         if ((t1 >= 0.0 && t1 <= 1.0) || (t2 >= 0.0 && t2 <= 1.0))
@@ -339,7 +343,7 @@ namespace MarsLander
                 return false;
             }
 
-            private double[] cache = new double[6];
+            private double[] cache = new double[7];
 
             internal void Save()
             {
@@ -349,6 +353,7 @@ namespace MarsLander
                 cache[3] = VerticalVelocity;
                 cache[4] = Rotation;
                 cache[5] = Power;
+                cache[6] = Fuel;
             }
 
             private void Load()
@@ -359,6 +364,7 @@ namespace MarsLander
                 VerticalVelocity = cache[3];
                 Rotation = cache[4];
                 Power = cache[5];
+                Fuel = cache[6];
             }
         }
 
@@ -393,12 +399,12 @@ namespace MarsLander
                 int r = GetRandom(0, 1);
                 if (all || r == 0)
                 {
-                    angles[i] += GetRandom(-15, 15);
+                    angles[i] = GetRandom(-90, 90);
                     angles[i] = Math.Max(-90, Math.Min(angles[i], 90));
                 }
                 if (all || r == 1)
                 {
-                    thrust[i] = Math.Max(0, Math.Min(GetRandom(4, 8), 4));
+                    thrust[i] = Math.Max(0, Math.Min(GetRandom(0, 8), 4));
                 }
                 score = -1;
             }
@@ -441,7 +447,7 @@ namespace MarsLander
 
             double maxDistance = 0;
             //find landing zone
-            for (int i = 0; i < surfaceN - 1; i += 2)
+            for (int i = 0; i < surfaceN - 1; i++)
             {
                 if (map[i].Y == map[i + 1].Y) //flat
                 {
@@ -481,27 +487,32 @@ namespace MarsLander
                 lander.Rotation = rotate;
                 lander.Power = power;
                 lander.Save();
-
+if (t == 0)
+{
                 //Console.Error.WriteLine("Lander: {0} {1} {2} {3}", X, Y, rotate, power);
-                stopwatch.Restart();
+                stopwatch = Stopwatch.StartNew();
                 //lander.Solve(140, t > 0);
-                lander.Solve(120, t > 0);
+                lander.Solve(150, t > 0);
                 //Console.Error.WriteLine("Solution: {0}\n{1}\nScore:{2}", string.Join(",", lander.sol.angles), string.Join(",", lander.sol.thrust), lander.sol.score);
                 Console.Error.WriteLine("Score:{0} {1}", lander.sol.score, lander.sol.Time);
                 Console.Error.WriteLine("Speed {0} {1}", lander.VerticalVelocity, lander.HorizontalVelocity);
                 Console.WriteLine((int)lander.sol.angles[0] + " " + lander.sol.thrust[0]);
 
-                //for (int i = 0; i < lander.sol.Time; i++)
-                //{
-                //    lander.sol.angles[i] = Math.Max(-90, Math.Min(lander.sol.angles[i], 90));
-                //    lander.sol.thrust[i] = Math.Max(0, Math.Min(lander.sol.thrust[i], 4));
-                //    Console.WriteLine((int)lander.sol.angles[i] + " " + lander.sol.thrust[i]);
-                //}
-                //Console.WriteLine(0 + " " + 4);
-                //Console.WriteLine(0 + " " + 4);
-                //Console.WriteLine(0 + " " + 4);
-                //Console.WriteLine(0 + " " + 4);
 
+
+                for (int i = 0; i < lander.sol.Time-7; i++)
+                {
+                   lander.sol.angles[i] = Math.Max(-90, Math.Min(lander.sol.angles[i], 90));
+                   lander.sol.thrust[i] = Math.Max(0, Math.Min(lander.sol.thrust[i], 4));
+                   Console.WriteLine((int)lander.sol.angles[i] + " " + lander.sol.thrust[i]);
+                }
+                Console.WriteLine(0 + " " + 4);
+                Console.WriteLine(0 + " " + 4);
+                Console.WriteLine(0 + " " + 4);
+                Console.WriteLine(0 + " " + 4);
+
+}
+                Console.WriteLine(0 + " " + 4);
                 if (t > 0) Console.Error.WriteLine("Avg Sols: {0}, Avg Sims: {1}", solutionsTried / t, solutionsTried * Depth / t);
 
                 //Console.WriteLine((int)lander.sol.angles[0] + " " + lander.sol.thrust[0]);
