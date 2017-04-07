@@ -16,8 +16,9 @@ using System.Linq;
 internal class Player
 {
     private const int Chromosones = 6;
+    private const int Population = 2;
     private const int MaxThrust = 200;
-    private const double ShieldProbability = 10.0;
+    private const double ShieldProbability = 20.0;
 
     private static int _laps = 0;
     private static int _checkpointCount = 0;
@@ -75,7 +76,7 @@ internal class Player
                 int angle = int.Parse(inputs[4]); // angle of your pod
                 int nextCheckPointId = int.Parse(inputs[5]); // next check point id of your pod
                 if (round == 0 && i > 1 && angle > -1) is_p2 = true;
-                //Console.Error.WriteLine("INPUT: {0} {1}", i, s);
+
                 if (nextCheckPointId == -1) nextCheckPointId = 1;
                 Pods[i].Update(x, y, vx, vy, angle, nextCheckPointId);
             }
@@ -86,8 +87,8 @@ internal class Player
             int timeLimit = round == 0 ? 980 : 142;
             opp.Solve(timeLimit * 0.15);
             me.Solve(timeLimit, round > 0);
-            Console.Error.WriteLine("Moving towards {0} at angle {1} : {2}\n{3}\n{4}", me.Runner().CheckpointId, me.Runner().Angle, me.sol.Angle[0], string.Join(",", me.sol.Angle),
-                me.sol.EndPoint(me.sol.Thrust[0], me.sol.Angle[0], Pods[0]));
+            Console.Error.WriteLine("Moving towards {0} at angle {1} : {2}\n{3}\nRunner: {4}", me.Runner().CheckpointId, me.Runner().Angle, me.sol.Angle[0],
+                me.sol.EndPoint(me.sol.Thrust[0], me.sol.Angle[0], Pods[0]), me.Runner().Id);
             if (round > 0) Console.Error.WriteLine("Avg iterations {0}; avg sims {1}", _solutionsTried / round, _solutionsTried * Chromosones / round);
 
             me.sol.Output(me.sol.Thrust[0], me.sol.Angle[0], Pods[0]);
@@ -111,7 +112,6 @@ internal class Player
 
         public int[] Thrust { get; set; }
         public double[] Angle { get; set; }
-        //public Pod Pod { get; set; }
 
         internal double _score = -1;
 
@@ -180,8 +180,6 @@ internal class Player
                 }
             }
             _score = -1;
-            //if (!all)
-            //    Console.Error.WriteLine("Inside: {0}, {1}:{2}", rand,Thrust[index], Angle[index]);
         }
 
         public void Shift()
@@ -267,25 +265,6 @@ internal class Player
         }
     }
 
-    //internal class Move
-    //{
-    //    public Move(double angle, int thrust)
-    //    {
-    //        Angle = angle;
-    //        Thrust = thrust;
-    //    }
-
-    // public Move() { }
-
-    // public int Thrust { get; set; } public double Angle { get; set; } public bool Shield { get;
-    // set; }
-
-    //    public override string ToString()
-    //    {
-    //        return string.Format("[{0},{1}]", Angle, Thrust);
-    //    }
-    //}
-
     internal class Collision
     {
         public Collision(Unit unitA, Unit unitB, double t)
@@ -333,8 +312,6 @@ internal class Player
         public int Timeout { get; set; }
         public int Thrust { get; set; }
 
-        //public Solution Solution { get; set; }
-        //public List<Move> Moves { get; set; }
         public Pod Partner { get; set; }
 
         public bool HasBoost { get; internal set; }
@@ -622,40 +599,53 @@ internal class Player
             Move(sol);
         }
 
+        private Solution[] solutions = new Solution[Population];
+
         internal void Solve(double timeLimit, bool hasSeed = false)
         {
             Solution bestSolution;
             if (hasSeed)
             {
-                bestSolution = sol;
-                bestSolution.Shift();
+                for (int i = 0; i < Population; i++)
+                {
+                    solutions[i].Shift();
+                }
             }
             else
             {
-                bestSolution = sol = new Solution();
-
-                if (round == 0 && Pods[Id].Distance(checkpoints[1]) > 4000)
+                var podDistance = Pods[Id].Distance(checkpoints[1]);
+                for (int i = 0; i < Population; i++)
                 {
-                    bestSolution.Thrust[0] = 650;
+                    solutions[i] = new Solution();
+                    if (round == 0 && podDistance > 4000)
+                    {
+                        solutions[i].Thrust[0] = 650;
+                    }
                 }
+                //bestSolution = sol = new Solution();
             }
-            GetScore(bestSolution);
+            for (int i = 0; i < Population; i++)
+            {
+                GetScore(solutions[i]);
+            }
 
-            Solution child;
             while (_stopwatch.ElapsedMilliseconds < timeLimit)
             {
-                //Console.Error.WriteLine("0: {0}", _stopwatch.ElapsedMilliseconds);
-                child = bestSolution.Clone();
-                //Console.Error.WriteLine("1: {0}", _stopwatch.ElapsedMilliseconds);
-                child.Mutate(MyRandom.Rnd(2 * Chromosones));
-                //Console.Error.WriteLine("2: {0}", _stopwatch.ElapsedMilliseconds);
-
-                if (GetScore(child) > GetScore(bestSolution))
+                var sorted = solutions.OrderByDescending(s => s._score);
+                bestSolution = sorted.First();
+                for (int i = 0; i < Population; i++)
                 {
-                    bestSolution = child;
+                    if (solutions[i] == bestSolution) continue;
+
+                    var child = bestSolution.Clone();
+                    child.Mutate(MyRandom.Rnd(2 * Chromosones));
+                    if (GetScore(child) > GetScore(solutions[i]))
+                    {
+                        solutions[i] = child;
+                    }
                 }
             }
-            sol = bestSolution;
+            sol = solutions.OrderByDescending(s => s._score).First();
         }
 
         private double GetScore(Solution sol)
@@ -685,7 +675,7 @@ internal class Player
                 if (turn == 0) score += 0.1 * Evaluation();
                 turn++;
             }
-            //if (Id == 0) Console.Error.WriteLine("", sol.EndPoint())
+
             score += 0.9 * Evaluation();
             for (int i = 0; i < 4; i++) Pods[i].Load();
             turn = 0;
@@ -704,8 +694,8 @@ internal class Player
 
             if (my_runner.Timeout <= 0) return -1e7;
             if (opp_runner.Timeout <= 0) return 1e7;
-            if (opp_runner.Checked == _laps * _checkpointCount || opp_blocker.Checked == _laps * _checkpointCount) return -1e7;
-            //if (my_runner.Checked >= _laps * _checkpointCount || my_blocker.Checked >= _laps * _checkpointCount) return 1e7;
+            if (opp_runner.Checked > _laps * _checkpointCount || opp_blocker.Checked > _laps * _checkpointCount) return -1e7;
+            if (my_runner.Checked > _laps * _checkpointCount || my_blocker.Checked > _laps * _checkpointCount) return 1e7;
 
             var score = my_runner.Score() - opp_runner.Score();
             score -= my_blocker.Distance(checkpoints[opp_runner.CheckpointId]);
@@ -783,55 +773,6 @@ internal class Player
             if (t <= 0.0 || t > 1.0) return null;
 
             return new Collision(this, unit, t);
-
-            /*
-            Point up = new Point(0, 0);
-
-            // We look for the closest point to u (which is in (0,0)) on the line described by our
-            // speed vector
-            Point p = up.Closest(myp, new Point(x + vx, y + vy));
-
-            // Square of the distance between u and the closest point to u on the line described by
-            // our speed vector
-            var pdist = up.Distance2(p);
-
-            // Square of the distance between us and that point
-            var mypdist = myp.Distance2(p);
-
-            // If the distance between u and this line is less than the sum of the radii, there might
-            // be a collision
-            if (pdist < sumOfRadii)
-            {
-                // Our speed on the line
-                var length = Math.Sqrt(vx * vx + vy * vy);
-
-                // We move along the line to find the point of impact
-                var backdist = Math.Sqrt(sumOfRadii - pdist);
-                p.X = p.X - backdist * (vx / length);
-                p.Y = p.Y - backdist * (vy / length);
-
-                // If the point is now further away it means we are not going the right way,
-                // therefore the collision won't happen
-                if (myp.Distance2(p) > mypdist)
-                {
-                    return null;
-                }
-
-                pdist = p.Distance(myp);
-
-                // The point of impact is further than what we can travel in one turn
-                if (pdist > length)
-                {
-                    return null;
-                }
-
-                // Time needed to reach the impact point
-                var t = pdist / length;
-
-                return new Collision(this, unit, t);
-            }
-
-            return null;*/
         }
 
         internal double DiffAngle(Unit unit)
