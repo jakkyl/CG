@@ -41,19 +41,18 @@ namespace CODEJAM.Qualification
                 stalls[numStalls - 1].Occupied = true;
 
                 var result = OccupyStalls(stalls, people);
-                Console.WriteLine(string.Format("Case #{0}: {1} {2}", i + 1, result[1], result[0]));
+                Console.WriteLine(string.Format("Case #{0}: {1} {2}", i + 1, Math.Max(result[0], result[1]), Math.Min(result[0], result[1])));
             }
         }
 
         private static int[] OccupyStalls(Stall[] stalls, int people)
         {
-            
-            foreach (var s in stalls) s.Cost = 0;
+
+            //foreach (var s in stalls) s.Cost = 0;
             int min = stalls.Length;
             int max = 0;
 
             int start = 0;
-            int end = 0;
             int index = 0;
             for (int i = 0; i < stalls.Length; i++)
             {
@@ -66,54 +65,41 @@ namespace CODEJAM.Qualification
                     if (start > max)
                     {
                         max = start;
-                        index = i-(int)Math.Ceiling(start / 2d);
-                        //index = i - index - 1;
-                        start = 0;
+                        index = i - (int)Math.Round(start * 0.5, MidpointRounding.AwayFromZero);
+                        //index = i - index - 1;                        
                     }
                     if (start < min)
                     {
                         min = start;
-                        start = 0;
                     }
+                        start = 0;
                 }
+            }
+            if (stalls[index].Occupied)
+            {
+                if (stalls[index - 1].Occupied) index--;
+                else index++;
             }
             stalls[index].Occupied = true;
             stalls[index].Cost = start;
-            if (people == 0) return new int[] { min, max};
+            //int c = stalls.Count(s => !s.Occupied);
+            if (people == 1)
+            {
+                int right = 0;
+                int left = 0;
+                for (int i = index + 1; i < stalls.Length; i++)
+                {
+                    if (stalls[i].Occupied) break;
+                    right++;
+                }
+                for (int i = index - 1; i > 0; i--)
+                {
+                    if (stalls[i].Occupied) break;
+                    left++;
+                }
+                return new int[] { left, right };
+            }
             return OccupyStalls(stalls, people - 1);
-
-
-            //Queue<Stall> openSet = new Queue<Stall>();
-            //var first = stalls.FirstOrDefault(s => !s.Occupied);
-            //openSet.Enqueue(first);
-            //int minDistance = stalls.Length;
-            //var closedSet = new List<Stall>();
-            //var costSoFar = new Dictionary<Stall, Stall>();
-            //costSoFar[first] = 0;
-            //while (openSet.Count() > 0)
-            //{
-            //    var current = openSet.Dequeue();
-
-            //    var empty = current.Neighbors;
-            //    foreach (var stall in empty)
-            //    {
-            //        if (!stall.Occupied)
-            //        {
-            //            costSoFar[stall]++;
-            //        }
-
-            //        if (closedSet.Contains(stall)) continue;
-            //        if (openSet.Contains(stall)) continue;
-            //        openSet.Enqueue(stall);
-            //        closedSet.Add(stall);
-
-            //    }
-
-            //}
-            //max = stalls.Max(s => s.Cost);
-            //var maxStall = stalls.First(s => s.Cost == max);
-            //maxStall.Occupied = true;
-            //return OccupyStalls(stalls, people - 1);
         }
     }
 }
