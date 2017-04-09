@@ -31,9 +31,9 @@ namespace FantasticBits
         private static int _myScore = 0;
         private static int _oppScore = 0;
 
-        private static List<Wizard> _myTeam = new List<Wizard>();
-        private static List<Wizard> _oppTeam = new List<Wizard>();
+        private static List<Wizard> _wizards = new List<Wizard>();
         private static List<Snaffle> _snaffles = new List<Snaffle>();
+        private static List<Bludger> _bludgers = new List<Bludger>();
 
         private static Random rand = new Random();
         private static Stopwatch _stopwatch;
@@ -111,6 +111,75 @@ namespace FantasticBits
                 return new Point(X / mag, Y / mag);
             }
         }
+
+        #region Spells
+        public class Spell
+        {
+            public static int Cost { get; set; }
+            public int Duration { get; set; }
+            public string Name { get; set; }
+            public Wizard Source { get; set; }
+            public Entity Target { get; set; }
+            public double Power { get; set; }
+
+            public virtual void GetPower() { }
+
+            public void Cast(Entity target)
+            {
+                Console.WriteLine(string.Format("{0} {1}", Name, target.Id));
+            }
+        }
+
+        public class Obliviate : Spell
+        {
+            public static new int Cost => 5;
+
+            public Obliviate()
+            {
+                Duration = 4;
+                Name = "OBLIVIATE";
+            }
+        }
+        public class Petrificus : Spell
+        {
+            public static new int Cost => 10;
+            public Petrificus()
+            {
+                Duration = 1;
+                Name = "PETRIFICUS";
+            }
+        }
+        public class Accio : Spell
+        {
+            public static new int Cost => 15;
+            public Accio()
+            {
+                Duration = 6;
+                Name = "ACCIO";
+
+            }
+
+            public override void GetPower()
+            {
+                Power = Math.Min(3000 / Math.Pow(Source.Distance(Target), 2), 1000);
+            }
+        }
+        public class Flipendo : Spell
+        {
+            public static new int Cost => 20;
+            public Flipendo()
+            {
+                Duration = 3;
+                Name = "FLIPENDO";
+
+            }
+
+            public override void GetPower()
+            {
+                Power = Math.Min(6000 / Math.Pow(Source.Distance(Target), 2), 1000);
+            }
+        }
+        #endregion
 
         public class Entity : Point
         {
@@ -211,8 +280,65 @@ namespace FantasticBits
                 Y = (double)cache[1];
                 Velocity = (Point)cache[2];
             }
+
+            public Collision CheckCollisions(Entity unit)
+            {
+                //same speed will never collide
+                if (Velocity == unit.Velocity) return null;
+
+                var distance = Distance2(unit);
+                var sumOfRadii = Math.Pow(Radius + unit.Radius, 2);
+
+                //already touching
+                //if (distance < sumOfRadii) return new Collision(this, unit, 0.0);
+
+                // We place ourselves in the reference frame of u. u is therefore stationary and is at (0,0)
+                var dx = X - unit.X;
+                var dy = Y - unit.Y;
+                Point myp = new Point(dx, dy);
+                var vx = Velocity.X - unit.Velocity.X;
+                var vy = Velocity.Y - unit.Velocity.Y;
+                var a = vx * vx + vy * vy;
+                if (a < 0.00001) return null;
+
+                var b = -2.0 * (dx * vx + dy * vy);
+
+                var delta = b * b - 4.0 * a * (dx * dx + dy * dy - sumOfRadii);
+
+                if (delta < 0.0) return null;
+
+                var t = (b - Math.Sqrt(delta)) * (1.0 / (2.0 * a));
+                //Console.Error.WriteLine("Bounce {0} {1} - {2}", this, unit, t);
+                if (t <= 0.0 || t > 1.0) return null;
+
+                return new Collision(this, unit, t);
+            }
         }
 
+        public class Collision
+        {
+            public Entity EntityA { get; set; }
+            public Entity EntityB { get; set; }
+            public double Time { get; set; }
+
+            public Collision(Entity a, Entity b, double t)
+            {
+                EntityA = a;
+                EntityB = b;
+                Time = t;
+            }
+        }
+        public class Bludger : Entity
+        {
+            public Wizard Target { get; set; }
+            public Wizard LastTarget { get; set; }
+            public Bludger(int id, double x, double y, double vx, double vy) : base(id, x, y, vx, vy)
+            {
+                Mass = 0.5;
+                Friction = 0.75;
+                Radius = 200;
+            }
+        }
         public class Snaffle : Entity
         {
             public bool BeingCarried { get; set; }
@@ -229,6 +355,9 @@ namespace FantasticBits
         {
             public bool Carrying { get; set; }
             public Solution Solution { get; set; }
+            public int MP { get; internal set; }
+            public int TeamId { get; internal set; }
+            public Spell ActiveSpell { get; set; }
 
             public Wizard(int id, double x, double y, double vx, double vy, bool carrying) : base(id, x, y, vx, vy)
             {
@@ -285,7 +414,7 @@ namespace FantasticBits
                     {
                         Thrust(sol.Moves[i].Power, sol.Moves[i].Destination);
                         Move(1.0);
-                        //CheckCollision();
+                        CheckCollisions(this);
                         if (Carrying)
                         {
                             //Throw
@@ -375,6 +504,7 @@ namespace FantasticBits
             {
                 round++;
                 _stopwatch = Stopwatch.StartNew();
+                _snaffles.Clear();
 
                 inputs = Console.ReadLine().Split(' ');
 
@@ -400,13 +530,13 @@ namespace FantasticBits
                     switch (entityType)
                     {
                         case EntityType.Wizard:
-
-                            var wiz = _myTeam.FirstOrDefault(w => w.Id == entityId);
-
+                        case EntityType.Opponent_Wizard:
+                            var wiz = _wizards.FirstOrDefault(w => w.Id == entityId);
                             if (wiz == null)
                             {
                                 wiz = new Wizard(entityId, x, y, vx, vy, Convert.ToBoolean(state));
-                                _myTeam.Add(wiz);
+                                wiz.TeamId = entityType == EntityType.Wizard ? _myTeamId : Math.Abs(_myTeamId - 1);
+                                _wizards.Add(wiz);
                             }
                             else
                             {
@@ -416,61 +546,151 @@ namespace FantasticBits
                                 wiz.Velocity.Y = vy;
                                 wiz.Carrying = Convert.ToBoolean(state);
                             }
+                            wiz.MP = myMagic;
+                            if (wiz.ActiveSpell != null) wiz.ActiveSpell.Duration--;
                             wiz.Save();
-                            break;
-                        case EntityType.Opponent_Wizard:
-
-                            var oppWiz = _oppTeam.FirstOrDefault(w => w.Id == entityId);
-
-                            if (oppWiz == null)
-                            {
-                                oppWiz = new Wizard(entityId, x, y, vx, vy, Convert.ToBoolean(state));
-                                _oppTeam.Add(oppWiz);
-                            }
-                            else
-                            {
-                                oppWiz.X = x;
-                                oppWiz.Y = y;
-                                oppWiz.Velocity.X = vx;
-                                oppWiz.Velocity.Y = vy;
-                                oppWiz.Carrying = Convert.ToBoolean(state);
-                            }
-                            oppWiz.Save();
                             break;
                         case EntityType.Snaffle:
 
-                            var snaffle = _snaffles.FirstOrDefault(w => w.Id == entityId);
+                            var snaffle = new Snaffle(entityId, x, y, vx, vy, Convert.ToBoolean(state));
+                            _snaffles.Add(snaffle);
 
-                            if (snaffle == null)
+                            snaffle.Save();
+                            break;
+                        case EntityType.Bludger:
+
+                            var bludger = _bludgers.FirstOrDefault(w => w.Id == entityId);
+
+                            if (bludger == null)
                             {
-                                snaffle = new Snaffle(entityId, x, y, vx, vy, Convert.ToBoolean(state));
-                                _snaffles.Add(snaffle);
+                                bludger = new Bludger(entityId, x, y, vx, vy);
+                                _bludgers.Add(bludger);
                             }
                             else
                             {
-                                snaffle.X = x;
-                                snaffle.Y = y;
-                                snaffle.BeingCarried = Convert.ToBoolean(state);
+                                bludger.X = x;
+                                bludger.Y = y;
                             }
-                            snaffle.Save();
+                            bludger.LastTarget = _wizards.FirstOrDefault(w => w.Id == state);
+                            bludger.Save();
                             break;
                     }
                 }
 
-                for (int i = 0; i < 2; i++)
+                foreach (var wizard in _wizards.Where(w => w.TeamId == _myTeamId))
                 {
                     // Write an action using Console.WriteLine()
                     // To debug: Console.Error.WriteLine("Debug messages...");
 
                     // Edit this line to indicate the action for each wizard (0 ≤ thrust ≤ 150, 0 ≤ power ≤ 500)
                     // i.e.: "MOVE x y thrust" or "THROW x y power"
-                    if (_myTeam[i].Carrying)
+                    if (wizard.Carrying)
                         Console.WriteLine(string.Format("THROW {0} {1} {2}", _myTeamId == 0 ? Width : 0, GoalY, MaxPower));
                     else
                     {
-                        var snaff = _snaffles.OrderBy(s => s.Distance2(_myTeam[i])).FirstOrDefault(s => !s.BeingCarried);
+                        //check bludger
+                        if (myMagic >= Flipendo.Cost)
+                        {
+                            int myGoal = _myTeamId == 0 ? 0 : Width;
+                            bool cast = false;
+                            foreach (var s in _snaffles.OrderByDescending(s => s.Distance(wizard)))
+                            {
+                                var spell = new Flipendo()
+                                {
+                                    Source = wizard,
+                                    Target = s
+                                };
+                                Console.Error.WriteLine("Old {0}", wizard);
+                                spell.GetPower();
+                                s.Thrust((int)spell.Power, new Point(myGoal, 300));
+                                s.Move(1.0);
+                                Console.Error.WriteLine("New {0}", wizard);
+                                if (s.X > Width || s.X < 0)
+                                {
+
+                                    wizard.ActiveSpell.Cast(s);
+                                    myMagic -= Flipendo.Cost;
+                                    cast = true;
+                                    break;
+                                }
+                                s.Load();
+                                //if ((_myTeamId == 0 && s.X < 3000 && wizard.X > s.X) || (_myTeamId == 1 && s.X > Width - 3000 && wizard.X < s.X))
+                                //{
+                                //    wizard.ActiveSpell = new Flipendo()
+                                //    {
+                                //        Target = s
+                                //    };
+                                //    wizard.ActiveSpell.Cast(s);
+                                //    cast = true;
+                                //    myMagic -= Flipendo.Cost;
+                                //    break;
+                                //}
+                            }
+                            if (cast) continue;
+                        }
+                        /*
+                        if (myMagic > Obliviate.Cost)
+                        {
+                            var minBludgerDistance = 10000.0;
+                            Bludger minBludger = null;
+                            for (int i = 0; i < 2; i++)
+                            {
+                                var d = _bludgers[i].Distance(wizard);
+                                if (d < minBludgerDistance)
+                                {
+                                    minBludgerDistance = d;
+                                    minBludger = _bludgers[i];
+                                }
+                            }
+                            if (minBludgerDistance < 1000 && minBludger.LastTarget != wizard)
+                            {
+                                wizard.ActiveSpell = new Obliviate();
+                                wizard.ActiveSpell.Cast(minBludger);
+                                Console.Error.WriteLine("Oblivia D: {0}", minBludgerDistance);
+                                myMagic -= Obliviate.Cost;
+                                continue;
+                            }
+                        }
+                        if (myMagic >= Accio.Cost)
+                        {
+                            bool cast = false;
+                            foreach (var s in _snaffles)
+                            {
+                                if ((_myTeamId == 0 && s.X < 2000) || (_myTeamId == 1 && s.X > Width - 2000))
+                                {
+                                    wizard.ActiveSpell = new Accio();
+                                    wizard.ActiveSpell.Cast(s);
+                                    cast = true;
+                                    myMagic -= Accio.Cost;
+                                    break;
+                                }
+                            }
+                            if (cast) continue;
+                        }
+                        if (myMagic >= Petrificus.Cost)
+                        {
+                            bool cast = false;
+                            foreach (var enemy in _wizards.Where(w => w.TeamId != _myTeamId && !_wizards.Any(w1 => w1.ActiveSpell?.Target == w)))
+                            {
+                                if ((_myTeamId == 0 && enemy.X < 3000) || (_myTeamId == 1 && enemy.X > Width - 3000))
+                                {
+                                    wizard.ActiveSpell = new Petrificus();
+                                    wizard.ActiveSpell.Target = enemy;
+                                    wizard.ActiveSpell.Cast(enemy);
+                                    myMagic -= Petrificus.Cost;
+                                    cast = true;
+                                    break;
+                                }
+                            }
+                            if (cast) continue;
+                        }
+                        */
+
+                        var snaff = _snaffles.OrderBy(s => s.Distance2(wizard)).FirstOrDefault(s => !s.BeingCarried);
+                        if (snaff == null) snaff = _snaffles.FirstOrDefault();
                         snaff.BeingCarried = true;
                         Console.WriteLine(string.Format("MOVE {0} {1} {2}", snaff.X, snaff.Y, MaxThrust));
+
                     }
                 }
             }
