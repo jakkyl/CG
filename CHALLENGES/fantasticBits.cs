@@ -12,7 +12,6 @@ using System.Diagnostics;
  **/
 namespace FantasticBits
 {
-
     class Player
     {
         private const int Population = 1;
@@ -46,6 +45,7 @@ namespace FantasticBits
             Snaffle,
             Bludger
         }
+
         public class Point
         {
             public Point(double x, double y)
@@ -53,9 +53,7 @@ namespace FantasticBits
                 X = x;
                 Y = y;
             }
-
             public double X { get; set; }
-
             public double Y { get; set; }
 
             public double Distance2(Point p)
@@ -137,6 +135,7 @@ namespace FantasticBits
                 Velocity.X *= thrust;
                 Velocity.Y *= thrust;
             }
+
             public void Move(double t)
             {
                 X += Velocity.X * t;
@@ -181,6 +180,7 @@ namespace FantasticBits
 
                 // If the norm of the impact vector is less than 120, we normalize it to 120
                 var impulse = Math.Sqrt(fx * fx + fy * fy);
+
                 if (impulse < 100.0)
                 {
                     var df = 100.0 / impulse;
@@ -223,7 +223,6 @@ namespace FantasticBits
                 Friction = 0.75;
                 Radius = 150;
             }
-
         }
 
         public class Wizard : Entity
@@ -255,6 +254,7 @@ namespace FantasticBits
             public void Solve(int timeLimit, bool hasSeed = false)
             {
                 Solution best;
+
                 if (hasSeed)
                 {
                     best = Solution;
@@ -292,13 +292,10 @@ namespace FantasticBits
                         }
                         End();
                     }
-
-
                 }
 
                 return sol.Score;
             }
-
         }
 
         public class Chromosone
@@ -333,6 +330,7 @@ namespace FantasticBits
             public void Mutate(int index, bool all = false)
             {
                 int r = rand.Next(1);
+
                 if (r == 0 || all)
                 {
                     int x = rand.Next(0, Width);
@@ -358,14 +356,13 @@ namespace FantasticBits
                 Mutate(Chromosones, true);
                 Mutate(Chromosones * 2, true);
             }
+
             public Solution Clone()
             {
                 var s = new Solution();
                 Moves.CopyTo(s.Moves, 0);
                 return s;
             }
-
-
         }
 
         static void Main(string[] args)
@@ -380,15 +377,18 @@ namespace FantasticBits
                 _stopwatch = Stopwatch.StartNew();
 
                 inputs = Console.ReadLine().Split(' ');
+
                 int myScore = int.Parse(inputs[0]);
                 int myMagic = int.Parse(inputs[1]);
                 inputs = Console.ReadLine().Split(' ');
                 int opponentScore = int.Parse(inputs[0]);
                 int opponentMagic = int.Parse(inputs[1]);
                 int entities = int.Parse(Console.ReadLine()); // number of entities still in game
+
                 for (int i = 0; i < entities; i++)
                 {
                     inputs = Console.ReadLine().Split(' ');
+
                     int entityId = int.Parse(inputs[0]); // entity identifier
                     EntityType entityType = (EntityType)Enum.Parse(typeof(EntityType), inputs[1], true); // "WIZARD", "OPPONENT_WIZARD" or "SNAFFLE" or "BLUDGER" 
                     int x = int.Parse(inputs[2]); // position
@@ -400,9 +400,14 @@ namespace FantasticBits
                     switch (entityType)
                     {
                         case EntityType.Wizard:
+
                             var wiz = _myTeam.FirstOrDefault(w => w.Id == entityId);
+
                             if (wiz == null)
-                                _myTeam.Add(new Wizard(entityId, x, y, vx, vy, Convert.ToBoolean(state)));
+                            {
+                                wiz = new Wizard(entityId, x, y, vx, vy, Convert.ToBoolean(state));
+                                _myTeam.Add(wiz);
+                            }
                             else
                             {
                                 wiz.X = x;
@@ -414,9 +419,14 @@ namespace FantasticBits
                             wiz.Save();
                             break;
                         case EntityType.Opponent_Wizard:
+
                             var oppWiz = _oppTeam.FirstOrDefault(w => w.Id == entityId);
+
                             if (oppWiz == null)
-                                _oppTeam.Add(new Wizard(entityId, x, y, vx, vy, Convert.ToBoolean(state)));
+                            {
+                                oppWiz = new Wizard(entityId, x, y, vx, vy, Convert.ToBoolean(state));
+                                _oppTeam.Add(oppWiz);
+                            }
                             else
                             {
                                 oppWiz.X = x;
@@ -428,9 +438,14 @@ namespace FantasticBits
                             oppWiz.Save();
                             break;
                         case EntityType.Snaffle:
+
                             var snaffle = _snaffles.FirstOrDefault(w => w.Id == entityId);
+
                             if (snaffle == null)
-                                _snaffles.Add(new Snaffle(entityId, x, y, vx, vy, Convert.ToBoolean(state)));
+                            {
+                                snaffle = new Snaffle(entityId, x, y, vx, vy, Convert.ToBoolean(state));
+                                _snaffles.Add(snaffle);
+                            }
                             else
                             {
                                 snaffle.X = x;
@@ -444,10 +459,8 @@ namespace FantasticBits
 
                 for (int i = 0; i < 2; i++)
                 {
-
                     // Write an action using Console.WriteLine()
                     // To debug: Console.Error.WriteLine("Debug messages...");
-
 
                     // Edit this line to indicate the action for each wizard (0 ≤ thrust ≤ 150, 0 ≤ power ≤ 500)
                     // i.e.: "MOVE x y thrust" or "THROW x y power"
@@ -458,7 +471,6 @@ namespace FantasticBits
                         var snaff = _snaffles.OrderBy(s => s.Distance2(_myTeam[i])).FirstOrDefault(s => !s.BeingCarried);
                         snaff.BeingCarried = true;
                         Console.WriteLine(string.Format("MOVE {0} {1} {2}", snaff.X, snaff.Y, MaxThrust));
-
                     }
                 }
             }
