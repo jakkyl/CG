@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.IO;
 using System.Text;
@@ -10,9 +10,10 @@ using System.Diagnostics;
  * Grab Snaffles and try to throw them through the opponent's goal!
  * Move towards a Snaffle and use your team id to determine where you need to throw it.
  **/
+
 namespace FantasticBits
 {
-    class Player
+    internal class Player
     {
         private const int Population = 1;
         private const int Chromosones = 6;
@@ -20,6 +21,8 @@ namespace FantasticBits
         private const int Width = 16001;
         private const int Height = 7501;
         private const int GoalY = 3750;
+        private const int GoalTop = 1900;
+        private const int GoalBottom = 5600;
         private const int MaxRounds = 200;
 
         private const int PoleRadius = 300;
@@ -31,12 +34,14 @@ namespace FantasticBits
         private static int _myScore = 0;
         private static int _oppScore = 0;
 
-        private static List<Wizard> _myTeam = new List<Wizard>();
-        private static List<Wizard> _oppTeam = new List<Wizard>();
+        private static List<Wizard> _wizards = new List<Wizard>();
         private static List<Snaffle> _snaffles = new List<Snaffle>();
+        private static List<Bludger> _bludgers = new List<Bludger>();
 
         private static Random rand = new Random();
         private static Stopwatch _stopwatch;
+        private static int _simulationTurn = 0;
+        private static int _simulations = 0;
 
         public enum EntityType
         {
@@ -53,6 +58,7 @@ namespace FantasticBits
                 X = x;
                 Y = y;
             }
+
             public double X { get; set; }
             public double Y { get; set; }
 
@@ -105,12 +111,97 @@ namespace FantasticBits
                 return string.Format("[{0},{1}]", X, Y);
             }
 
+            public override bool Equals(object obj)
+            {
+                if (obj is Point)
+                    return X == (obj as Point).X && Y == (obj as Point).Y;
+                else
+                    return base.Equals(obj);
+            }
+
             public Point Normalized()
             {
                 var mag = Math.Sqrt(Math.Pow(X, 2) + Math.Pow(Y, 2));
                 return new Point(X / mag, Y / mag);
             }
         }
+
+        #region Spells
+
+        public class Spell
+        {
+            public static int Cost { get; set; }
+            public int Duration { get; set; }
+            public string Name { get; set; }
+            public Wizard Source { get; set; }
+            public Entity Target { get; set; }
+            public double Power { get; set; }
+
+            public virtual void GetPower()
+            {
+            }
+
+            public void Cast(Entity target)
+            {
+                Console.WriteLine(string.Format("{0} {1}", Name, target.Id));
+            }
+        }
+
+        public class Obliviate : Spell
+        {
+            public static new int Cost = 5;
+
+            public Obliviate()
+            {
+                Duration = 4;
+                Name = "OBLIVIATE";
+            }
+        }
+
+        public class Petrificus : Spell
+        {
+            public static new int Cost = 10;
+
+            public Petrificus()
+            {
+                Duration = 1;
+                Name = "PETRIFICUS";
+            }
+        }
+
+        public class Accio : Spell
+        {
+            public static new int Cost = 15;
+
+            public Accio()
+            {
+                Duration = 6;
+                Name = "ACCIO";
+            }
+
+            public override void GetPower()
+            {
+                Power = Math.Min(3000 / Math.Pow(Source.Distance(Target), 2), 1000);
+            }
+        }
+
+        public class Flipendo : Spell
+        {
+            public static new int Cost = 20;
+
+            public Flipendo()
+            {
+                Duration = 3;
+                Name = "FLIPENDO";
+            }
+
+            public override void GetPower()
+            {
+                Power = Math.Min(6000 / Math.Pow(Source.Distance(Target), 2), 1000);
+            }
+        }
+
+        #endregion Spells
 
         public class Entity : Point
         {
@@ -121,7 +212,8 @@ namespace FantasticBits
             public Point Velocity { get; set; }
             private object[] cache = new object[7];
 
-            public Entity(int id, double x, double y, double vx, double vy) : base(x, y)
+            public Entity(int id, double x, double y, double vx, double vy)
+                : base(x, y)
             {
                 Id = id;
                 Velocity = new Point(vx, vy);
@@ -131,15 +223,20 @@ namespace FantasticBits
             {
                 var vec = Subtract(dest);
                 var normal = vec.Normalized();
-                var thrust = power / Mass;
-                Velocity.X *= thrust;
-                Velocity.Y *= thrust;
+                var invM = 1 / Mass;
+                //if (this is Wizard)
+                //    Console.Error.WriteLine("Thrust {0} {1}", thrust, Id);
+                Velocity.X += normal.X * power * invM;
+                Velocity.Y += normal.Y * power * invM;
             }
 
             public void Move(double t)
             {
+                var oldP = new Point(this.X, this.Y);
                 X += Velocity.X * t;
                 Y += Velocity.Y * t;
+                //if (this is Wizard)
+                //    Console.Error.WriteLine("MOVING {3} FROM {0} TO {1} AT {2}", oldP, this as Point, Velocity, Id);
             }
 
             public void End()
@@ -152,13 +249,44 @@ namespace FantasticBits
 
             public void Bounce(Entity unit)
             {
+                if (unit is Snaffle && this is Wizard)
+                {
+                    var wiz = (this as Wizard);
+                    if (wiz.Snaffle != unit && (wiz.Carrying || wiz.SnaffleCooldown > 0)) return;
+
+                    wiz.Carrying = true;
+                    wiz.Snaffle = unit as Snaffle;
+                    unit.Velocity = wiz.Velocity;
+                    unit.X = wiz.X;
+                    unit.Y = wiz.Y;
+                    wiz.SnaffleCooldown = 3;
+                    Console.Error.WriteLine("GOT A SNAFFLE! {0}", this.Id);
+                    return;
+                }
+                if (unit is Wall)
+                {
+                    if (X < 0 || X > Width)
+                    {
+                        if (this is Snaffle && Y > GoalTop && Y < GoalBottom)
+                        {
+                            (this as Snaffle).InPlay = false;
+                            if ((X < 0 && _myTeamId == 1) || (X > Width && _myTeamId == 0)) _myScore++;
+                            else _oppScore++;
+                            return;
+                        }
+                        Velocity.X *= -1;
+                    }
+                    if (Y < 0 || Y > Height) Velocity.Y *= -1;
+
+                    return;
+                }
                 var mcoeff = (Mass + unit.Mass) / (Mass * unit.Mass);
 
                 var nx = X - unit.X;
                 var ny = Y - unit.Y;
 
-                // Square of the distance between the 2 pods. This value could be hardcoded because it is
-                // always 800²
+                // Square of the distance between the 2 pods. This value could be hardcoded because
+                // it is always 800²
                 var nxnysquare = nx * nx + ny * ny;
 
                 var dvx = Velocity.X - unit.Velocity.X;
@@ -203,6 +331,8 @@ namespace FantasticBits
                 cache[0] = X;
                 cache[1] = Y;
                 cache[2] = Velocity;
+                cache[3] = _myScore;
+                cache[4] = _oppScore;
             }
 
             public void Load()
@@ -210,13 +340,95 @@ namespace FantasticBits
                 X = (double)cache[0];
                 Y = (double)cache[1];
                 Velocity = (Point)cache[2];
+                _myScore = (int)cache[3];
+                _oppScore = (int)cache[4];
+            }
+
+            public Collision CheckCollisions(Entity unit)
+            {
+                if (X < 0 || X > Width || Y < 0 || Y > Height)
+                {
+                    //Console.Error.WriteLine("HIT A WALL {0}", Id);
+                    return new Collision(this, new Wall(), 1.0);
+                }
+
+                //same speed will never collide
+                if (Velocity == unit.Velocity) return null;
+
+                var distance = Distance2(unit);
+                var sumOfRadii = Math.Pow(Radius + unit.Radius, 2);
+
+                //already touching
+                //if (distance < sumOfRadii) return new Collision(this, unit, 0.0);
+
+                // We place ourselves in the reference frame of u. u is therefore stationary and is
+                // at (0,0)
+                var dx = X - unit.X;
+                var dy = Y - unit.Y;
+                Point myp = new Point(dx, dy);
+                var vx = Velocity.X - unit.Velocity.X;
+                var vy = Velocity.Y - unit.Velocity.Y;
+                var a = vx * vx + vy * vy;
+                if (a < 0.00001) return null;
+
+                var b = -2.0 * (dx * vx + dy * vy);
+
+                var delta = b * b - 4.0 * a * (dx * dx + dy * dy - sumOfRadii);
+
+                if (delta < 0.0) return null;
+
+                var t = (b - Math.Sqrt(delta)) * (1.0 / (2.0 * a));
+                //Console.Error.WriteLine("Bounce {0} {1} - {2}", this, unit, t);
+                if (t <= 0.0 || t > 1.0) return null;
+
+                //Console.Error.WriteLine("HIT SOMETING! Me: {1} IT:{0}", unit.Id, Id);
+                return new Collision(this, unit, t);
+            }
+        }
+
+        public class Collision
+        {
+            public Entity EntityA { get; set; }
+            public Entity EntityB { get; set; }
+            public double Time { get; set; }
+
+            public Collision(Entity a, Entity b, double t)
+            {
+                EntityA = a;
+                EntityB = b;
+                Time = t;
+            }
+        }
+
+        public class Wall : Entity
+        {
+            public Wall()
+                : base(-1, 0, 0, 0, 0)
+            {
+            }
+        }
+
+        public class Bludger : Entity
+        {
+            public Wizard Target { get; set; }
+            public Wizard LastTarget { get; set; }
+
+            public Bludger(int id, double x, double y, double vx, double vy)
+                : base(id, x, y, vx, vy)
+            {
+                Mass = 0.5;
+                Friction = 0.75;
+                Radius = 200;
             }
         }
 
         public class Snaffle : Entity
         {
             public bool BeingCarried { get; set; }
-            public Snaffle(int id, double x, double y, double vx, double vy, bool state) : base(id, x, y, vx, vy)
+            public bool InPlay { get; set; }
+
+            public Snaffle(int id, double x, double y, double vx, double vy, bool state)
+                : base(id, x, y, vx, vy)
             {
                 BeingCarried = state;
                 Mass = 0.5;
@@ -227,10 +439,18 @@ namespace FantasticBits
 
         public class Wizard : Entity
         {
-            public bool Carrying { get; set; }
             public Solution Solution { get; set; }
+            public int TeamId { get; internal set; }
 
-            public Wizard(int id, double x, double y, double vx, double vy, bool carrying) : base(id, x, y, vx, vy)
+            public Spell ActiveSpell { get; set; }
+            public int MP { get; internal set; }
+
+            public Snaffle Snaffle { get; set; }
+            public int SnaffleCooldown { get; set; }
+            public bool Carrying { get; set; }
+
+            public Wizard(int id, double x, double y, double vx, double vy, bool carrying)
+                : base(id, x, y, vx, vy)
             {
                 Carrying = carrying;
                 Radius = 400;
@@ -243,13 +463,114 @@ namespace FantasticBits
             //    // Can't turn by more than 18� in one turn
             //    a = Math.Max(-18, Math.Min(18, a));
 
-            //    Angle += a;
+            // Angle += a;
 
             //    if (Angle >= 360)
             //        Angle = Angle - 360;
             //    else if (Angle < 0.0)
             //        Angle += 360;
             //}
+            private object[] cache = new object[7];
+
+            public void Save()
+            {
+                base.Save();
+                cache[0] = Carrying;
+                cache[1] = Snaffle;
+            }
+
+            public void Load()
+            {
+                base.Load();
+                Carrying = (bool)cache[0];
+                Snaffle = (Snaffle)cache[1];
+            }
+
+            public void End()
+            {
+                base.End();
+                MP++;
+            }
+        }
+
+        #region Bots
+
+        public class Bot
+        {
+            public int Id { get; set; }
+            public Wizard Wizard { get; set; }
+
+            public Bot()
+                : this(0)
+            {
+            }
+
+            public Bot(int id)
+            {
+                Id = id;
+            }
+
+            internal virtual void Move()
+            {
+            }
+        }
+
+        public class ReflexBot : Bot
+        {
+            public ReflexBot()
+                : base()
+            {
+            }
+
+            public ReflexBot(int id)
+                : base(id)
+            {
+            }
+
+            internal override void Move()
+            {
+                if (Wizard.Carrying)
+                {
+                    var x = _myTeamId == 0 ? Width : 0 - Wizard.Velocity.X;
+                    var y = GoalY - Wizard.Velocity.Y;
+                    if (Wizard.Snaffle == null)
+                        Wizard.Snaffle = _snaffles.First(s => s.Distance(Wizard) < Wizard.Radius);
+                    Wizard.Snaffle.Thrust(MaxPower, new Point(x, y));
+                    Wizard.Carrying = false;
+                }
+                else
+                {
+                    var snaff = _snaffles.OrderBy(s => s.Distance2(Wizard)).FirstOrDefault(s => !s.BeingCarried);
+                    if (snaff == null) snaff = _snaffles.FirstOrDefault();
+                    Wizard.Thrust(MaxThrust, snaff);
+                }
+            }
+        }
+
+        public class SearchBot : Bot
+        {
+            public Solution Solution { get; set; }
+            public List<Bot> Opponents { get; set; }
+
+            public SearchBot()
+                : base()
+            {
+            }
+
+            public SearchBot(int id)
+                : base(id)
+            {
+            }
+
+            internal override void Move()
+            {
+                Move(Solution);
+            }
+
+            private void Move(Player.Solution Solution)
+            {
+                Wizard.Thrust(Solution.Moves[_simulationTurn].Power, Solution.Moves[_simulationTurn].Destination);
+            }
 
             public void Solve(int timeLimit, bool hasSeed = false)
             {
@@ -258,10 +579,13 @@ namespace FantasticBits
                 if (hasSeed)
                 {
                     best = Solution;
+                    best.Shift();
                 }
                 else
                 {
                     best = new Solution();
+                    Solution = best;
+                    Console.Error.WriteLine("New Sol {0}", string.Join(",", (object[])best.Moves));
                 }
                 GetScore(best);
 
@@ -277,38 +601,77 @@ namespace FantasticBits
                 Solution = best;
             }
 
-            public decimal GetScore(Solution sol)
+            public double GetScore(Solution sol)
             {
                 if (sol.Score == -1)
                 {
                     for (int i = 0; i < Chromosones; i++)
                     {
-                        Thrust(sol.Moves[i].Power, sol.Moves[i].Destination);
-                        Move(1.0);
-                        //CheckCollision();
-                        if (Carrying)
-                        {
-                            //Throw
-                        }
-                        End();
+                        Move();
+                        for (int j = 0; j < Opponents.Count; j++)
+                            Opponents[j].Move();
+                        MoveEntities();
+                        sol.Play();
+                        _simulationTurn++;
                     }
+
+                    sol.Score = Evaluate();
+
+                    _simulationTurn = 0;
+                    for (int i = 0; i < 4; i++) _wizards[i].Load();
+                    for (int i = 0; i < 2; i++) _bludgers[i].Load();
+                    foreach (var s in _snaffles) s.Load();
+
+                    _simulations++;
                 }
 
                 return sol.Score;
             }
+
+            private double Evaluate()
+            {
+                int myGoal = Wizard.TeamId == 0 ? 0 : Width;
+                //var myDist = _snaffles.Where(s => s.InPlay).Sum(s => s.Distance2(this.Wizard));
+                var score = (_myScore - _oppScore) + _snaffles.Count(s => s.X < 8000); ;
+
+                return score;
+            }
+
+            private void MoveEntities()
+            {
+                for (int i = 0; i < 2; i++)
+                {
+                    var closestWiz = _wizards.Where(w => w != _bludgers[i].LastTarget).OrderBy(w => w.Distance(_bludgers[i])).First();
+                    _bludgers[i].Thrust(1000, closestWiz);
+                    _bludgers[i].Move(1.0);
+                }
+                foreach (var s in _snaffles)
+                {
+                    if (!s.BeingCarried) s.Move(1.0);
+                }
+            }
         }
+
+        #endregion Bots
 
         public class Chromosone
         {
             public Point Destination { get; set; }
             public int Power { get; set; }
             public bool Carrying { get; set; }
+            public string Action { get; set; }
+
+            public override string ToString()
+            {
+                return string.Format("[{0} {1}]", Destination, Power);
+            }
         }
 
         public class Solution
         {
             public Chromosone[] Moves { get; set; }
-            public int Score { get; set; }
+            public double Score { get; set; }
+
             public Solution(bool init = true)
             {
                 Moves = new Chromosone[Chromosones * 2];
@@ -316,7 +679,10 @@ namespace FantasticBits
                 if (init)
                 {
                     for (int i = 0; i < Chromosones * 2; i++)
+                    {
+                        Moves[i] = new Chromosone();
                         Mutate(i, true);
+                    }
                 }
                 Score = -1;
             }
@@ -324,7 +690,6 @@ namespace FantasticBits
             public void Mutate()
             {
                 Mutate(rand.Next(0, Chromosones * 2));
-                Score = -1;
             }
 
             public void Mutate(int index, bool all = false)
@@ -348,13 +713,14 @@ namespace FantasticBits
 
             public void Shift()
             {
-                for (int i = 0; i < Chromosones * 2; i++)
+                for (int i = 1; i < Chromosones; i++)
                 {
-                    Moves[i] = Moves[i + 1];
+                    Moves[i - 1] = Moves[i];
+                    Moves[i - 1 + Chromosones] = Moves[i + Chromosones];
                 }
 
-                Mutate(Chromosones, true);
-                Mutate(Chromosones * 2, true);
+                Mutate(Chromosones - 1, true);
+                Mutate(Chromosones * 2 - 1, true);
             }
 
             public Solution Clone()
@@ -363,18 +729,122 @@ namespace FantasticBits
                 Moves.CopyTo(s.Moves, 0);
                 return s;
             }
+
+            internal void Play()
+            {
+                int snaffleCount = _snaffles.Count;
+
+                double t = 0.0;
+                while (t < 1.0)
+                {
+                    Collision firstCol = null;
+
+                    for (int i = 0; i < 4; i++)
+                    {
+                        //check other pods
+                        for (int j = i + 1; j < 4; j++)
+                        {
+                            var col = _wizards[i].CheckCollisions(_wizards[j]);
+                            //if (col != null)
+                            //    Console.Error.WriteLine("Bounce {0} {1}", col.T, t);
+                            if (col != null && col.Time + t < 1.0 && (firstCol == null || col.Time < firstCol.Time))
+                            {
+                                firstCol = col;
+                            }
+                        }
+                        for (int j = 0; j < 2; j++)
+                        {
+                            var col = _wizards[i].CheckCollisions(_bludgers[j]);
+                            //if (col != null)
+                            //    Console.Error.WriteLine("Bounce {0} {1}", col.T, t);
+                            if (col != null && col.Time + t < 1.0 && (firstCol == null || col.Time < firstCol.Time))
+                            {
+                                firstCol = col;
+                            }
+                        }
+                        for (int j = 0; j < snaffleCount; j++)
+                        {
+                            if (_snaffles[j].X < 0 || _snaffles[j].X > Width)
+                            {
+                                _snaffles[j].InPlay = false;
+                            }
+                            if (!_snaffles[j].InPlay) continue;
+
+                            var col = _wizards[i].CheckCollisions(_snaffles[j]);
+                            //if (col != null)
+                            //    Console.Error.WriteLine("Bounce {0} {1}", col.T, t);
+                            if (col != null && col.Time + t < 1.0 && (firstCol == null || col.Time < firstCol.Time))
+                            {
+                                firstCol = col;
+                            }
+                        }
+                    }
+
+                    if (firstCol == null)
+                    {
+                        for (int i = 0; i < 4; i++)
+                        {
+                            _wizards[i].Move(1.0 - t);
+                        }
+                        t = 1.0;
+                    }
+                    else
+                    {
+                        //Console.Error.WriteLine("Bounce {0} {1}", firstCol.UnitA.GetType(), firstCol.UnitB.GetType());
+                        for (int i = 0; i < 4; i++)
+                        {
+                            _wizards[i].Move(firstCol.Time);
+                        }
+
+                        firstCol.EntityA.Bounce(firstCol.EntityB);
+
+                        t += firstCol.Time;
+                    }
+                }
+
+                for (int i = 0; i < 4; i++)
+                    _wizards[i].End();
+                for (int j = 0; j < 2; j++)
+                    _bludgers[j].End();
+                for (int j = 0; j < snaffleCount; j++)
+                    _snaffles[j].End();
+            }
+
+            internal void Output(Chromosone chromosone, Wizard wizard)
+            {
+                if (wizard.Carrying)
+                {
+                    chromosone.Action = "THROW";
+                    chromosone.Power = Math.Min(chromosone.Power, MaxPower);
+                }
+                else
+                {
+                    chromosone.Action = "MOVE";
+                    chromosone.Power = Math.Min(chromosone.Power, MaxThrust);
+                }
+
+                Console.WriteLine(string.Format("{0} {1} {2} {3}", chromosone.Action, chromosone.Destination.X, chromosone.Destination.Y, chromosone.Power));
+            }
         }
 
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             string[] inputs;
             _myTeamId = int.Parse(Console.ReadLine()); // if 0 you need to score on the right of the map, if 1 you need to score on the left
             int round = -1;
+
+            var oppReflex = new ReflexBot(_myTeamId == 0 ? 3 : 1);
+            var meReflex = new ReflexBot(_myTeamId == 0 ? 1 : 3);
+
+            var oppSearch = new ReflexBot(oppReflex.Id - 1);
+            var meSearch = new SearchBot(meReflex.Id - 1);
+            meSearch.Opponents = new List<Bot>() { oppReflex, meReflex, oppSearch };
+
             // game loop
             while (true)
             {
                 round++;
-                _stopwatch = Stopwatch.StartNew();
+                _snaffles.Clear();
 
                 inputs = Console.ReadLine().Split(' ');
 
@@ -390,7 +860,7 @@ namespace FantasticBits
                     inputs = Console.ReadLine().Split(' ');
 
                     int entityId = int.Parse(inputs[0]); // entity identifier
-                    EntityType entityType = (EntityType)Enum.Parse(typeof(EntityType), inputs[1], true); // "WIZARD", "OPPONENT_WIZARD" or "SNAFFLE" or "BLUDGER" 
+                    EntityType entityType = (EntityType)Enum.Parse(typeof(EntityType), inputs[1], true); // "WIZARD", "OPPONENT_WIZARD" or "SNAFFLE" or "BLUDGER"
                     int x = int.Parse(inputs[2]); // position
                     int y = int.Parse(inputs[3]); // position
                     int vx = int.Parse(inputs[4]); // velocity
@@ -400,13 +870,27 @@ namespace FantasticBits
                     switch (entityType)
                     {
                         case EntityType.Wizard:
-
-                            var wiz = _myTeam.FirstOrDefault(w => w.Id == entityId);
-
+                        case EntityType.Opponent_Wizard:
+                            var wiz = _wizards.FirstOrDefault(w => w.Id == entityId);
                             if (wiz == null)
                             {
                                 wiz = new Wizard(entityId, x, y, vx, vy, Convert.ToBoolean(state));
-                                _myTeam.Add(wiz);
+                                wiz.TeamId = entityType == EntityType.Wizard ? _myTeamId : Math.Abs(_myTeamId - 1);
+                                _wizards.Add(wiz);
+                                if (entityType == EntityType.Wizard)
+                                {
+                                    if (meSearch.Wizard == null)
+                                        meSearch.Wizard = wiz;
+                                    else
+                                        meReflex.Wizard = wiz;
+                                }
+                                else
+                                {
+                                    if (oppSearch.Wizard == null)
+                                        oppSearch.Wizard = wiz;
+                                    else
+                                        oppReflex.Wizard = wiz;
+                                }
                             }
                             else
                             {
@@ -416,59 +900,166 @@ namespace FantasticBits
                                 wiz.Velocity.Y = vy;
                                 wiz.Carrying = Convert.ToBoolean(state);
                             }
+                            wiz.MP = myMagic;
+                            if (wiz.ActiveSpell != null) wiz.ActiveSpell.Duration--;
                             wiz.Save();
                             break;
-                        case EntityType.Opponent_Wizard:
 
-                            var oppWiz = _oppTeam.FirstOrDefault(w => w.Id == entityId);
-
-                            if (oppWiz == null)
-                            {
-                                oppWiz = new Wizard(entityId, x, y, vx, vy, Convert.ToBoolean(state));
-                                _oppTeam.Add(oppWiz);
-                            }
-                            else
-                            {
-                                oppWiz.X = x;
-                                oppWiz.Y = y;
-                                oppWiz.Velocity.X = vx;
-                                oppWiz.Velocity.Y = vy;
-                                oppWiz.Carrying = Convert.ToBoolean(state);
-                            }
-                            oppWiz.Save();
-                            break;
                         case EntityType.Snaffle:
 
-                            var snaffle = _snaffles.FirstOrDefault(w => w.Id == entityId);
+                            var snaffle = new Snaffle(entityId, x, y, vx, vy, Convert.ToBoolean(state));
+                            _snaffles.Add(snaffle);
 
-                            if (snaffle == null)
+                            snaffle.Save();
+                            break;
+
+                        case EntityType.Bludger:
+
+                            var bludger = _bludgers.FirstOrDefault(w => w.Id == entityId);
+
+                            if (bludger == null)
                             {
-                                snaffle = new Snaffle(entityId, x, y, vx, vy, Convert.ToBoolean(state));
-                                _snaffles.Add(snaffle);
+                                bludger = new Bludger(entityId, x, y, vx, vy);
+                                _bludgers.Add(bludger);
                             }
                             else
                             {
-                                snaffle.X = x;
-                                snaffle.Y = y;
-                                snaffle.BeingCarried = Convert.ToBoolean(state);
+                                bludger.X = x;
+                                bludger.Y = y;
                             }
-                            snaffle.Save();
+                            bludger.LastTarget = _wizards.FirstOrDefault(w => w.Id == state);
+                            bludger.Save();
                             break;
                     }
                 }
 
-                for (int i = 0; i < 2; i++)
+                for (int i = 0; i < 4; i++)
                 {
-                    // Write an action using Console.WriteLine()
-                    // To debug: Console.Error.WriteLine("Debug messages...");
+                    _wizards[i].Snaffle = _snaffles.FirstOrDefault(s => s.Distance(_wizards[i]) < _wizards[i].Radius);
+                    _wizards[i].Save();
+                }
 
-                    // Edit this line to indicate the action for each wizard (0 ≤ thrust ≤ 150, 0 ≤ power ≤ 500)
-                    // i.e.: "MOVE x y thrust" or "THROW x y power"
-                    if (_myTeam[i].Carrying)
-                        Console.WriteLine(string.Format("THROW {0} {1} {2}", _myTeamId == 0 ? Width : 0, GoalY, MaxPower));
+                _stopwatch = Stopwatch.StartNew();
+                meSearch.Solve(30, round > 0);
+                meSearch.Solution.Output(meSearch.Solution.Moves[0], _wizards.First(w => w.Id == meSearch.Id));
+                meSearch.Solution.Output(meSearch.Solution.Moves[Chromosones], _wizards.First(w => w.Id == meSearch.Id + 1));
+                Console.Error.WriteLine(string.Format("Sims Per Round: {0}, Avg: {1}", _simulations / (round + 1), _simulations * Chromosones / (round + 1)));
+                continue;
+
+                foreach (var wizard in _wizards.Where(w => w.TeamId == _myTeamId))
+                {
+                    // Write an action using Console.WriteLine() To debug:
+                    // Console.Error.WriteLine("Debug messages...");
+
+                    // Edit this line to indicate the action for each wizard (0 ≤ thrust ≤ 150, 0 ≤
+                    // power ≤ 500) i.e.: "MOVE x y thrust" or "THROW x y power"
+                    if (wizard.Carrying)
+                    {
+                        var x = _myTeamId == 0 ? Width : 0 - wizard.Velocity.X;
+                        var y = GoalY - wizard.Velocity.Y;
+                        Console.WriteLine(string.Format("THROW {0} {1} {2}", x, y, MaxPower));
+                    }
                     else
                     {
-                        var snaff = _snaffles.OrderBy(s => s.Distance2(_myTeam[i])).FirstOrDefault(s => !s.BeingCarried);
+                        //check bludger
+                        if (myMagic >= Flipendo.Cost)
+                        {
+                            int myGoal = _myTeamId == 0 ? 0 : Width;
+                            bool cast = false;
+                            foreach (var s in _snaffles.OrderByDescending(s => s.Distance(wizard)))
+                            {
+                                var spell = new Flipendo()
+                                {
+                                    Source = wizard,
+                                    Target = s
+                                };
+                                Console.Error.WriteLine("Old {0}", wizard);
+                                spell.GetPower();
+                                s.Thrust((int)spell.Power, new Point(myGoal, GoalY));
+                                s.Move(1.0);
+                                Console.Error.WriteLine("New {0}", wizard);
+                                if (s.X > Width || s.X < 0)
+                                {
+                                    wizard.ActiveSpell.Cast(s);
+                                    myMagic -= Flipendo.Cost;
+                                    cast = true;
+                                    break;
+                                }
+                                s.Load();
+                                //if ((_myTeamId == 0 && s.X < 3000 && wizard.X > s.X) || (_myTeamId == 1 && s.X > Width - 3000 && wizard.X < s.X))
+                                //{
+                                //    wizard.ActiveSpell = new Flipendo()
+                                //    {
+                                //        Target = s
+                                //    };
+                                //    wizard.ActiveSpell.Cast(s);
+                                //    cast = true;
+                                //    myMagic -= Flipendo.Cost;
+                                //    break;
+                                //}
+                            }
+                            if (cast) continue;
+                        }
+                        /*
+                        if (myMagic > Obliviate.Cost)
+                        {
+                            var minBludgerDistance = 10000.0;
+                            Bludger minBludger = null;
+                            for (int i = 0; i < 2; i++)
+                            {
+                                var d = _bludgers[i].Distance(wizard);
+                                if (d < minBludgerDistance)
+                                {
+                                    minBludgerDistance = d;
+                                    minBludger = _bludgers[i];
+                                }
+                            }
+                            if (minBludgerDistance < 1000 && minBludger.LastTarget != wizard)
+                            {
+                                wizard.ActiveSpell = new Obliviate();
+                                wizard.ActiveSpell.Cast(minBludger);
+                                Console.Error.WriteLine("Oblivia D: {0}", minBludgerDistance);
+                                myMagic -= Obliviate.Cost;
+                                continue;
+                            }
+                        }*/
+                        if (myMagic >= Accio.Cost)
+                        {
+                            bool cast = false;
+                            foreach (var s in _snaffles)
+                            {
+                                if ((_myTeamId == 0 && s.X < 2000) || (_myTeamId == 1 && s.X > Width - 2000))
+                                {
+                                    wizard.ActiveSpell = new Accio();
+                                    wizard.ActiveSpell.Cast(s);
+                                    cast = true;
+                                    myMagic -= Accio.Cost;
+                                    break;
+                                }
+                            }
+                            if (cast) continue;
+                        }/*
+                        if (myMagic >= Petrificus.Cost)
+                        {
+                            bool cast = false;
+                            foreach (var enemy in _wizards.Where(w => w.TeamId != _myTeamId && !_wizards.Any(w1 => w1.ActiveSpell?.Target == w)))
+                            {
+                                if ((_myTeamId == 0 && enemy.X < 3000) || (_myTeamId == 1 && enemy.X > Width - 3000))
+                                {
+                                    wizard.ActiveSpell = new Petrificus();
+                                    wizard.ActiveSpell.Target = enemy;
+                                    wizard.ActiveSpell.Cast(enemy);
+                                    myMagic -= Petrificus.Cost;
+                                    cast = true;
+                                    break;
+                                }
+                            }
+                            if (cast) continue;
+                        }
+                        */
+
+                        var snaff = _snaffles.OrderBy(s => s.Distance2(wizard)).FirstOrDefault(s => !s.BeingCarried);
+                        if (snaff == null) snaff = _snaffles.FirstOrDefault();
                         snaff.BeingCarried = true;
                         Console.WriteLine(string.Format("MOVE {0} {1} {2}", snaff.X, snaff.Y, MaxThrust));
                     }
