@@ -30,6 +30,7 @@ namespace FantasticBits
         private const int MaxThrust = 150;
         private const int MaxPower = 500;
 
+        private static int round = -1;
         private static int _myTeamId = 0;
         private static int _myScore = 0;
         private static int _oppScore = 0;
@@ -61,6 +62,11 @@ namespace FantasticBits
 
             public double X { get; set; }
             public double Y { get; set; }
+
+            public double Distance2(double x, double y)
+            {
+                return Math.Pow(X - x, 2) + Math.Pow(Y - y, 2);
+            }
 
             public double Distance2(Point p)
             {
@@ -117,6 +123,17 @@ namespace FantasticBits
                     return X == (obj as Point).X && Y == (obj as Point).Y;
                 else
                     return base.Equals(obj);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash *= 23 + X.GetHashCode();
+                    hash *= 23 + Y.GetHashCode();
+                    return hash;
+                }
             }
 
             public Point Normalized()
@@ -226,20 +243,20 @@ namespace FantasticBits
                 var invM = 1 / Mass;
                 //if (this is Wizard)
                 //    Console.Error.WriteLine("Thrust {0} {1}", thrust, Id);
-                Velocity.X += normal.X * power * invM;
-                Velocity.Y += normal.Y * power * invM;
+                Velocity.X += vec.X * (power * invM);
+                Velocity.Y += vec.Y * (power * invM);
             }
 
             public void Move(double t)
             {
-                var oldP = new Point(this.X, this.Y);
+                //var oldP = new Point(this.X, this.Y);
                 X += Velocity.X * t;
                 Y += Velocity.Y * t;
                 //if (this is Wizard)
                 //    Console.Error.WriteLine("MOVING {3} FROM {0} TO {1} AT {2}", oldP, this as Point, Velocity, Id);
             }
 
-            public void End()
+            public virtual void End()
             {
                 X = Math.Round(X);
                 Y = Math.Round(Y);
@@ -260,7 +277,7 @@ namespace FantasticBits
                     unit.X = wiz.X;
                     unit.Y = wiz.Y;
                     wiz.SnaffleCooldown = 3;
-                    Console.Error.WriteLine("GOT A SNAFFLE! {0}", this.Id);
+                    //Console.Error.WriteLine("GOT A SNAFFLE! {0}", this.Id);
                     return;
                 }
                 if (unit is Wall)
@@ -326,7 +343,7 @@ namespace FantasticBits
                 // readable. But this place is called so often that I can't pay a performance price to
             }
 
-            public void Save()
+            public virtual void Save()
             {
                 cache[0] = X;
                 cache[1] = Y;
@@ -335,7 +352,7 @@ namespace FantasticBits
                 cache[4] = _oppScore;
             }
 
-            public void Load()
+            public virtual void Load()
             {
                 X = (double)cache[0];
                 Y = (double)cache[1];
@@ -356,7 +373,7 @@ namespace FantasticBits
                 if (Velocity == unit.Velocity) return null;
 
                 var distance = Distance2(unit);
-                var sumOfRadii = Math.Pow(Radius + unit.Radius, 2);
+                var sumOfRadii = Math.Pow(Radius + (unit is Snaffle ? -1 : unit.Radius), 2);
 
                 //already touching
                 //if (distance < sumOfRadii) return new Collision(this, unit, 0.0);
@@ -377,9 +394,9 @@ namespace FantasticBits
 
                 if (delta < 0.0) return null;
 
-                var t = (b - Math.Sqrt(delta)) * (1.0 / (2.0 * a));
+                var t = Math.Round((b - Math.Sqrt(delta)) * (1.0 / (2.0 * a)), 4);
                 //Console.Error.WriteLine("Bounce {0} {1} - {2}", this, unit, t);
-                if (t <= 0.0 || t > 1.0) return null;
+                if (t <= 0.0 || t >= 1.0) return null;
 
                 //Console.Error.WriteLine("HIT SOMETING! Me: {1} IT:{0}", unit.Id, Id);
                 return new Collision(this, unit, t);
@@ -434,6 +451,7 @@ namespace FantasticBits
                 Mass = 0.5;
                 Friction = 0.75;
                 Radius = 150;
+                InPlay = true;
             }
         }
 
@@ -472,21 +490,21 @@ namespace FantasticBits
             //}
             private object[] cache = new object[7];
 
-            public void Save()
+            public override void Save()
             {
                 base.Save();
                 cache[0] = Carrying;
                 cache[1] = Snaffle;
             }
 
-            public void Load()
+            public override void Load()
             {
                 base.Load();
                 Carrying = (bool)cache[0];
                 Snaffle = (Snaffle)cache[1];
             }
 
-            public void End()
+            public override void End()
             {
                 base.End();
                 MP++;
@@ -533,14 +551,12 @@ namespace FantasticBits
                 {
                     var x = _myTeamId == 0 ? Width : 0 - Wizard.Velocity.X;
                     var y = GoalY - Wizard.Velocity.Y;
-                    if (Wizard.Snaffle == null)
-                        Wizard.Snaffle = _snaffles.First(s => s.Distance(Wizard) < Wizard.Radius);
                     Wizard.Snaffle.Thrust(MaxPower, new Point(x, y));
                     Wizard.Carrying = false;
                 }
                 else
                 {
-                    var snaff = _snaffles.OrderBy(s => s.Distance2(Wizard)).FirstOrDefault(s => !s.BeingCarried);
+                    var snaff = _snaffles[0];//.OrderBy(s => s.Distance2(Wizard)).FirstOrDefault(s => !s.BeingCarried);
                     if (snaff == null) snaff = _snaffles.FirstOrDefault();
                     Wizard.Thrust(MaxThrust, snaff);
                 }
@@ -569,7 +585,15 @@ namespace FantasticBits
 
             private void Move(Player.Solution Solution)
             {
-                Wizard.Thrust(Solution.Moves[_simulationTurn].Power, Solution.Moves[_simulationTurn].Destination);
+                if (Wizard.Carrying)
+                {
+                    Wizard.Snaffle.Thrust(MaxPower, Solution.Moves[_simulationTurn].Destination);
+                    Wizard.Carrying = false;
+                }
+                else
+                {
+                    Wizard.Thrust(MaxPower, Solution.Moves[_simulationTurn].Destination);
+                }
             }
 
             public void Solve(int timeLimit, bool hasSeed = false)
@@ -593,9 +617,11 @@ namespace FantasticBits
                 {
                     var child = best.Clone();
                     child.Mutate();
+                        //Console.Error.WriteLine("B: {0} C: {1}",GetScore(best), GetScore(child));
                     if (GetScore(child) > GetScore(best))
                     {
                         best = child;
+                        //Console.Error.WriteLine("B: {0} C: {1}", best.Score, child.Score);
                     }
                 }
                 Solution = best;
@@ -608,11 +634,11 @@ namespace FantasticBits
                     for (int i = 0; i < Chromosones; i++)
                     {
                         Move();
-                        for (int j = 0; j < Opponents.Count; j++)
-                            Opponents[j].Move();
+                        // for (int j = 0; j < Opponents.Count; j++)
+                        //     Opponents[j].Move();
                         MoveEntities();
                         sol.Play();
-                        _simulationTurn++;
+                        if (round > 0) _simulationTurn++;
                     }
 
                     sol.Score = Evaluate();
@@ -630,9 +656,18 @@ namespace FantasticBits
 
             private double Evaluate()
             {
-                int myGoal = Wizard.TeamId == 0 ? 0 : Width;
-                //var myDist = _snaffles.Where(s => s.InPlay).Sum(s => s.Distance2(this.Wizard));
-                var score = (_myScore - _oppScore) + _snaffles.Count(s => s.X < 8000); ;
+                int myGoal = Wizard.TeamId == 1 ? 0 : Width;
+                //double myDist = _snaffles.Where(s => s.InPlay).Sum(s=>s.Distance2(myGoal, GoalY));
+                double score = 100*(_myScore - _oppScore);// + _snaffles.Count(s => s.X < 8000);
+                for (int i = 0; i < _snaffles.Count; i++)
+                {
+                    if (_snaffles[i].InPlay)
+                    {
+                        score -= _snaffles[i].Distance2(myGoal, GoalY);
+                        score -= _snaffles[i].Distance2(Wizard);
+                    }
+                }
+
 
                 return score;
             }
@@ -702,12 +737,12 @@ namespace FantasticBits
                     int y = rand.Next(0, Height);
                     Moves[index].Destination = new Point(x, y);
                 }
-                if (r == 1 || all)
-                {
-                    int power = rand.Next(0, MaxPower);
-                    Moves[index].Power = power;
-                }
-
+                // if (r == 1 || all)
+                // {
+                //     int power = rand.Next(0, MaxPower);
+                //     Moves[index].Power = power;
+                // }
+                Moves[index].Power = MaxPower;
                 Score = -1;
             }
 
@@ -752,16 +787,16 @@ namespace FantasticBits
                                 firstCol = col;
                             }
                         }
-                        for (int j = 0; j < 2; j++)
-                        {
-                            var col = _wizards[i].CheckCollisions(_bludgers[j]);
-                            //if (col != null)
-                            //    Console.Error.WriteLine("Bounce {0} {1}", col.T, t);
-                            if (col != null && col.Time + t < 1.0 && (firstCol == null || col.Time < firstCol.Time))
-                            {
-                                firstCol = col;
-                            }
-                        }
+                        // for (int j = 0; j < 2; j++)
+                        // {
+                        //     var col = _wizards[i].CheckCollisions(_bludgers[j]);
+                        //     //if (col != null)
+                        //     //    Console.Error.WriteLine("Bounce {0} {1}", col.T, t);
+                        //     if (col != null && col.Time + t < 1.0 && (firstCol == null || col.Time < firstCol.Time))
+                        //     {
+                        //         firstCol = col;
+                        //     }
+                        // }
                         for (int j = 0; j < snaffleCount; j++)
                         {
                             if (_snaffles[j].X < 0 || _snaffles[j].X > Width)
@@ -790,7 +825,7 @@ namespace FantasticBits
                     }
                     else
                     {
-                        //Console.Error.WriteLine("Bounce {0} {1}", firstCol.UnitA.GetType(), firstCol.UnitB.GetType());
+                        //Console.Error.WriteLine("Bounce {0} {1} {2}", firstCol.EntityA.GetType(), firstCol.EntityB.GetType(), firstCol.Time);
                         for (int i = 0; i < 4; i++)
                         {
                             _wizards[i].Move(firstCol.Time);
@@ -798,7 +833,8 @@ namespace FantasticBits
 
                         firstCol.EntityA.Bounce(firstCol.EntityB);
 
-                        t += firstCol.Time;
+                        //t += firstCol.Time;
+                        t=1.0;
                     }
                 }
 
@@ -831,7 +867,7 @@ namespace FantasticBits
         {
             string[] inputs;
             _myTeamId = int.Parse(Console.ReadLine()); // if 0 you need to score on the right of the map, if 1 you need to score on the left
-            int round = -1;
+
 
             var oppReflex = new ReflexBot(_myTeamId == 0 ? 3 : 1);
             var meReflex = new ReflexBot(_myTeamId == 0 ? 1 : 3);
@@ -938,12 +974,13 @@ namespace FantasticBits
                     _wizards[i].Snaffle = _snaffles.FirstOrDefault(s => s.Distance(_wizards[i]) < _wizards[i].Radius);
                     _wizards[i].Save();
                 }
-
                 _stopwatch = Stopwatch.StartNew();
-                meSearch.Solve(30, round > 0);
+                int time = round == 0 ? 500 : 30;
+                meSearch.Solve(time, round > 0);
                 meSearch.Solution.Output(meSearch.Solution.Moves[0], _wizards.First(w => w.Id == meSearch.Id));
                 meSearch.Solution.Output(meSearch.Solution.Moves[Chromosones], _wizards.First(w => w.Id == meSearch.Id + 1));
-                Console.Error.WriteLine(string.Format("Sims Per Round: {0}, Avg: {1}", _simulations / (round + 1), _simulations * Chromosones / (round + 1)));
+                if (round > 0)
+                    Console.Error.WriteLine(string.Format("Sims Per Round: {0}, Avg: {1}", _simulations / round, _simulations * Chromosones / round));
                 continue;
 
                 foreach (var wizard in _wizards.Where(w => w.TeamId == _myTeamId))
