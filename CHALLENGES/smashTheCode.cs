@@ -475,7 +475,7 @@ namespace SmashTheCode
             public void CalcFitness()
             {
                 Solve();
-                Fitness = Grid.score + Math.Min(6, Grid.NuisancePoints) - Grid.TallestColumn();
+                Fitness = Grid.score + Grid.NuisancePoints - Grid.TallestColumn();
             }
 
             public int CompareTo(DNA obj)
@@ -552,6 +552,7 @@ namespace SmashTheCode
                 var enemyPop = new Population(PopulationSize, _enemyGrid);
                 var enemyDna = enemyPop.GetBest(15);
                 _enemyNuisancePoints = _enemyGrid.NuisancePoints;
+                Console.Error.WriteLine("NP: {0}", _enemyNuisancePoints);
                 var dna = population.GetBest(80);
                 //dna.Grid.ApplyMove(dna.Genes[0], _nextBlocks[0]);
                 //dna.Grid.RemoveMatches(0, true);
