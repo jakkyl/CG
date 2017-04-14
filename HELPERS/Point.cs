@@ -58,6 +58,25 @@ namespace Solution.HELPERS
             return new Point(p.X - X, p.Y - Y);
         }
 
+        public override bool Equals(object obj)
+        {
+            if (obj is Point)
+                return X == (obj as Point).X && Y == (obj as Point).Y;
+            else
+                return base.Equals(obj);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash *= 23 + X.GetHashCode();
+                hash *= 23 + Y.GetHashCode();
+                return hash;
+            }
+        }
+
         public override string ToString()
         {
             return string.Format("[{0},{1}]", X, Y);

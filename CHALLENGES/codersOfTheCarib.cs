@@ -33,16 +33,6 @@ namespace CodersOfTheCari
 
         private static Random _rand = new Random();
 
-        public enum Direction
-        {
-            Right,
-            UpperRight,
-            UpperLeft,
-            Left,
-            LowerLeft,
-            LowerRight
-        }
-
         public class Point
         {
             private int[,] DIRECTIONS_EVEN = new int[,] { { 1, 0 }, { 0, -1 }, { -1, -1 }, { -1, 0 }, { -1, 1 }, { 0, 1 } };
@@ -107,21 +97,57 @@ namespace CodersOfTheCari
                 return X >= 0 && X < Width && Y >= 0 && Y < Height;
             }
 
-            public Point Neighbor(Direction orientation)
+            public Point Neighbor(int orientation)
             {
                 double newY, newX;
                 if (this.Y % 2 == 1)
                 {
-                    newY = this.Y + DIRECTIONS_ODD[(int)orientation, 1];
-                    newX = this.X + DIRECTIONS_ODD[(int)orientation, 0];
+                    newY = this.Y + DIRECTIONS_ODD[orientation, 1];
+                    newX = this.X + DIRECTIONS_ODD[orientation, 0];
                 }
                 else
                 {
-                    newY = this.Y + DIRECTIONS_EVEN[(int)orientation, 1];
-                    newX = this.X + DIRECTIONS_EVEN[(int)orientation, 0];
+                    newY = this.Y + DIRECTIONS_EVEN[orientation, 1];
+                    newX = this.X + DIRECTIONS_EVEN[orientation, 0];
                 }
 
                 return new Point(newX, newY);
+            }
+
+            public List<Entity> Neighbors()
+            {
+                var ns = new List<Entity>();
+                for (int i = 0; i < 6; i++)
+                {
+                    var n = Neighbor(i);
+                    if (n.IsInsideMap())
+                    {
+                        var ent = _entities.FirstOrDefault(e => e as Point == n);
+                        if (ent != null) ns.Add(ent);
+                        else ns.Add(new Entity(-1, n.X, n.Y));
+                    }
+                }
+
+                return ns;
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (obj is Point)
+                    return X == (obj as Point).X && Y == (obj as Point).Y;
+                else
+                    return base.Equals(obj);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash *= 23 + X.GetHashCode();
+                    hash *= 23 + Y.GetHashCode();
+                    return hash;
+                }
             }
 
             public override string ToString()
@@ -133,7 +159,7 @@ namespace CodersOfTheCari
         public class Entity : Point
         {
             public int Id { get; set; }
-            public Direction Direction { get; set; }
+            public int Direction { get; set; }
 
             public Entity(int id, double x, double y)
                 : base(x, y)
@@ -203,7 +229,7 @@ namespace CodersOfTheCari
             public int CannonCooldown { get; set; }
             public bool IsAlive { get; set; }
 
-            public Ship(int id, double x, double y, Direction rotation, int speed, int rum, int team)
+            public Ship(int id, double x, double y, int rotation, int speed, int rum, int team)
                 : base(id, x, y)
             {
                 Direction = rotation;
@@ -232,18 +258,43 @@ namespace CodersOfTheCari
                 return nextPos;
             }
 
-            public Point Move(Direction dir)
+            public Point GetNextBow()
             {
-                switch (dir)
-                {
-                    case Player.Direction.LowerLeft:
-                        return new Point(-1, 1);
-                }
-
-                return new Point(0, 0);
+                var next = GetNextPosition();
+                var p = new Point(next.X, next.Y);
+                var s = new Ship(-1)
+                    {
+                        X = p.X,
+                        Y = p.Y,
+                        Direction = Direction
+                    };
+                return s.Bow();
             }
 
-            internal void Update(int x, int y, Player.Direction direction, int speed, int rum)
+            public Point GetNextStern()
+            {
+                var next = GetNextPosition();
+                var p = new Point(next.X, next.Y);
+                var s = new Ship(-1)
+                {
+                    X = p.X,
+                    Y = p.Y,
+                    Direction = Direction
+                };
+                return s.Stern();
+            }
+
+            public Point Bow()
+            {
+                return Neighbor(Direction);
+            }
+
+            public Point Stern()
+            {
+                return Neighbor(((int)Direction + 3) % 6);
+            }
+
+            internal void Update(int x, int y, int direction, int speed, int rum)
             {
                 X = x;
                 Y = y;
@@ -252,6 +303,81 @@ namespace CodersOfTheCari
                 RumCarried = rum;
                 if (CannonCooldown > 0) CannonCooldown--;
                 if (MineCooldown > 0) MineCooldown--;
+            }
+
+            internal bool CheckCollisions()
+            {
+                var bow = GetNextBow();
+                var stern = GetNextStern();
+
+                Console.Error.WriteLine("BOW: {0}, STERN: {1}, C: {2}", bow, stern, this);
+                foreach (var entity in _entities.Where(s => s.Id != Id))
+                {
+                    if (entity as Point == bow as Point || entity as Point == stern as Point || entity as Point == this as Point)
+                    {
+                        if (entity is Barrel)
+                        {
+                            RumCarried += ((Barrel)entity).Rum;
+                        }
+                        else if (entity is Mine)
+                        {
+                            Console.Error.WriteLine("HIT A MINE! {0}", entity.Id);
+                            return true;
+                        }
+                        else if (entity is Ship)
+                        {
+                            Console.Error.WriteLine("HIT A SHIP! {0}", entity.Id);
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            }
+
+            public Dictionary<Entity, Entity> GetPossiblePath(Entity target)
+            {
+                var openSet = new Queue<Entity>();
+                openSet.Enqueue(this);
+
+                var closed = new List<Entity>();
+                var path = new Dictionary<Entity, Entity>();
+                path[this] = null;
+
+                while (openSet.Count > 0)
+                {
+                    var current = openSet.Dequeue();
+
+                    if (current == target) break;
+
+                    foreach (var next in current.Neighbors())
+                    {
+                        //Console.Error.WriteLine("{0} - N: {1}", current, next);
+                        if (path.ContainsKey(next) || next is Mine || next is Ship) continue;
+
+                        openSet.Enqueue(next);
+                        path[next] = current;
+                    }
+                }
+
+                //Console.Error.WriteLine("PATH FULL {0}", string.Join(",", path));
+                return path;
+            }
+
+            public List<Point> FindBestPath(Entity target)
+            {
+                var fullPath = GetPossiblePath(target);
+                var bestPath = new List<Point>();
+                var current = target;
+                while (current != this)
+                {
+                    current = fullPath[current];
+                    bestPath.Add(current);
+                }
+                bestPath.Reverse();
+                bestPath.Remove(this);
+
+                return bestPath;
             }
         }
 
@@ -265,6 +391,7 @@ namespace CodersOfTheCari
             {
                 _round++;
                 _entities.Clear();
+                shipsAlive.Clear();
                 int myShipCount = int.Parse(Console.ReadLine()); // the number of remaining ships
                 int entityCount = int.Parse(Console.ReadLine()); // the number of entities (e.g. ships, mines or cannonballs)
                 for (int i = 0; i < entityCount; i++)
@@ -285,7 +412,7 @@ namespace CodersOfTheCari
                             if (_round == 0)
                             {
                                 Console.Error.WriteLine("New Ship: {0}", entityId);
-                                ent = new Ship(entityId, x, y, (Direction)arg1, arg2, arg3, arg4);
+                                ent = new Ship(entityId, x, y, arg1, arg2, arg3, arg4);
                                 if (arg4 == 1)
                                     myShip.Add((Ship)ent);
                                 else
@@ -297,7 +424,7 @@ namespace CodersOfTheCari
                                     ent = myShip.FirstOrDefault(s => s.Id == entityId);
                                 else
                                     ent = enemyShip.FirstOrDefault(s => s.Id == entityId);
-                                ((Ship)ent).Update(x, y, (Direction)arg1, arg2, arg3);
+                                ((Ship)ent).Update(x, y, arg1, arg2, arg3);
                             }
                             shipsAlive.Add((Ship)ent);
                             break;
@@ -316,8 +443,8 @@ namespace CodersOfTheCari
                     }
                     _entities.Add(ent);
                 }
-
-                foreach (var ship in _entities.OfType<Ship>().Where(s => !shipsAlive.Contains(s)))
+                var allShips = myShip.Concat(enemyShip);
+                foreach (var ship in allShips.Where(s => !shipsAlive.Contains(s)))
                 {
                     ship.IsAlive = false;
                 }
@@ -329,22 +456,39 @@ namespace CodersOfTheCari
                 {
                     var closestRum = _entities.OfType<Barrel>().Where(b => !moves.Contains(b)).OrderBy(b => b.Distance(ship));
                     var enemy = enemyShip.Where(s => s.IsAlive).OrderBy(s => ship.Distance(s)).FirstOrDefault();
-                    var enemyDistance = enemy.Distance(ship);
+                    var enemyDistance = enemy.Distance(ship.GetNextBow());
                     var barrel = closestRum.FirstOrDefault();
-                    if ((ship.Speed > 0 || barrel == null) && enemyDistance < CannonRange && (barrel == null || enemyDistance < barrel.Distance(ship)) && ship.CannonCooldown <= 0)
+                    var nextPos = ship.GetNextPosition();
+
+                    if ((ship.Speed > 0 || barrel == null) &&
+                        enemyDistance < CannonRange * 0.5 &&
+                        (barrel == null || enemyDistance < barrel.Distance(ship)) &&
+                        ship.CannonCooldown <= 0)
                     {
+                        var eta = 1 + Math.Round(enemyDistance / 3);
                         var leadPos = enemy.GetNextPosition();
-                        Console.WriteLine("FIRE {0} {1}", leadPos.X, leadPos.Y);
+                        var delta = leadPos.Subtract(enemy);
+                        var newPos = new Point(enemy.X + delta.X * eta, enemy.Y + delta.Y * eta);
+                        Console.WriteLine("FIRE {0} {1}", newPos.X, newPos.Y);
                         ship.CannonCooldown = CannonCooldown;
                     }
                     else if (barrel != null)
                     {
                         moves.Add(barrel);
-                        Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
+                        var path = ship.FindBestPath(barrel);
+                        Console.Error.WriteLine("DEST {1} PATH {0}", string.Join(",", path), barrel);
+                        if (path.Count > 0)
+                            Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
+                        else
+                            Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
                     }
                     else
                     {
-                        Console.WriteLine("MOVE {0} {1}", _rand.Next(Width), _rand.Next(Height));
+                        var path = ship.FindBestPath(new Entity(-1, _rand.Next(Width), _rand.Next(Height)));
+                        if (path.Count > 0)
+                            Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
+                        else
+                            Console.WriteLine("MOVE {0} {1}", _rand.Next(Width), _rand.Next(Height));
                     }
                     //Console.WriteLine("WAIT"); // Any valid action, such as "WAIT" or "MOVE x y"
                 }
