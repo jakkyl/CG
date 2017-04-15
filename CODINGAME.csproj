@@ -44,6 +44,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CHALLENGES\codeBusters.cs" />
+    <Compile Include="CHALLENGES\codersOfTheCarib.cs" />
     <Compile Include="CHALLENGES\fantasticBits.cs" />
     <Compile Include="CHALLENGES\smashTheCode.cs" />
     <Compile Include="codersStrikeBack.cs">

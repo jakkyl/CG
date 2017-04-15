@@ -122,8 +122,12 @@ namespace CodersOfTheCari
                     var n = Neighbor(i);
                     if (n.IsInsideMap())
                     {
-                        var ent = _entities.FirstOrDefault(e => e as Point == n);
-                        if (ent != null) ns.Add(ent);
+                        var ent = _entities.FirstOrDefault(e => e.Equals(n));
+
+                        if (ent != null)
+                        {
+                            ns.Add(ent);
+                        }
                         else ns.Add(new Entity(-1, n.X, n.Y));
                     }
                 }
@@ -154,20 +158,8 @@ namespace CodersOfTheCari
             {
                 return string.Format("[{0},{1}]", X, Y);
             }
-        }
 
-        public class Entity : Point
-        {
-            public int Id { get; set; }
-            public int Direction { get; set; }
-
-            public Entity(int id, double x, double y)
-                : base(x, y)
-            {
-                Id = id;
-            }
-
-            public double Angle(Point targetPosition)
+            internal double Angle(Point targetPosition)
             {
                 double dy = (targetPosition.Y - this.Y) * Math.Sqrt(3) / 2;
                 double dx = targetPosition.X - this.X + ((int)(this.Y - targetPosition.Y) & 1) * 0.5;
@@ -180,8 +172,19 @@ namespace CodersOfTheCari
                 {
                     angle -= 6;
                 }
-
                 return angle;
+            }
+        }
+
+        public class Entity : Point
+        {
+            public int Id { get; set; }
+            public int Direction { get; set; }
+
+            public Entity(int id, double x, double y)
+                : base(x, y)
+            {
+                Id = id;
             }
 
             public override string ToString()
@@ -350,9 +353,9 @@ namespace CodersOfTheCari
 
                     if (current == target) break;
 
-                    foreach (var next in current.Neighbors())
+                    var neighbors = current is Ship ? ((Ship)current).Neighbors() : current.Neighbors();
+                    foreach (var next in neighbors)
                     {
-                        //Console.Error.WriteLine("{0} - N: {1}", current, next);
                         if (path.ContainsKey(next) || next is Mine || next is Ship) continue;
 
                         openSet.Enqueue(next);
@@ -369,6 +372,7 @@ namespace CodersOfTheCari
                 var fullPath = GetPossiblePath(target);
                 var bestPath = new List<Point>();
                 var current = target;
+                bestPath.Add(target);
                 while (current != this)
                 {
                     current = fullPath[current];
@@ -448,7 +452,7 @@ namespace CodersOfTheCari
                 {
                     ship.IsAlive = false;
                 }
-
+                //Console.Error.WriteLine("Ents {0}", string.Join(",", _entities));
                 int timeLimit = _round == 0 ? 1000 : 50;
 
                 var moves = new List<Entity>();
@@ -459,8 +463,12 @@ namespace CodersOfTheCari
                     var enemyDistance = enemy.Distance(ship.GetNextBow());
                     var barrel = closestRum.FirstOrDefault();
                     var nextPos = ship.GetNextPosition();
-
-                    if ((ship.Speed > 0 || barrel == null) &&
+                    var closestCannon = _entities.OfType<Cannonball>().OrderBy(c => c.Distance(ship)).FirstOrDefault();
+                    if (closestCannon != null && closestCannon.Distance(ship) < 2)
+                    {
+                        Console.WriteLine("FASTER");
+                    }
+                    else if ((ship.Speed > 0 || barrel == null) &&
                         enemyDistance < CannonRange * 0.5 &&
                         (barrel == null || enemyDistance < barrel.Distance(ship)) &&
                         ship.CannonCooldown <= 0)
@@ -472,23 +480,50 @@ namespace CodersOfTheCari
                         Console.WriteLine("FIRE {0} {1}", newPos.X, newPos.Y);
                         ship.CannonCooldown = CannonCooldown;
                     }
+                    else if (enemyDistance > CannonRange * 0.5)
+                    {
+                        //var path = ship.FindBestPath(enemy);
+                        //if (path.Count > 0)
+                        //    Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
+                        //else
+                        Console.WriteLine("MOVE {0} {1}", enemy.X, enemy.Y);
+                    }
                     else if (barrel != null)
                     {
                         moves.Add(barrel);
                         var path = ship.FindBestPath(barrel);
-                        Console.Error.WriteLine("DEST {1} PATH {0}", string.Join(",", path), barrel);
+                        Console.Error.WriteLine("CUR: {2} DEST {1} PATH {0}", string.Join(",", path), barrel, ship);
                         if (path.Count > 0)
-                            Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
+                        {
+                            int orientation = ship.Direction;
+                            var targetAngle = nextPos.Angle(barrel);
+                            var angleStraight = Math.Min(Math.Abs(orientation - targetAngle), 6 - Math.Abs(orientation - targetAngle));
+                            var anglePort = Math.Min(Math.Abs((orientation + 1) - targetAngle), Math.Abs((orientation - 5) - targetAngle));
+                            var angleStarboard = Math.Min(Math.Abs((orientation + 5) - targetAngle), Math.Abs((orientation - 1) - targetAngle));
+
+                            var centerAngle = nextPos.Angle(new Point(Width / 2, Height / 2));
+                            var anglePortCenter = Math.Min(Math.Abs((orientation + 1) - centerAngle), Math.Abs((orientation - 5) - centerAngle));
+                            var angleStarboardCenter = Math.Min(Math.Abs((orientation + 5) - centerAngle), Math.Abs((orientation - 1) - centerAngle));
+
+                            if (nextPos.Distance(barrel) == 1 && angleStraight > 1.5)
+                            {
+                                Console.WriteLine("SLOWER");
+                            }
+                            else
+                            {
+                                Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
+                            }
+                        }
                         else
                             Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
                     }
                     else
                     {
-                        var path = ship.FindBestPath(new Entity(-1, _rand.Next(Width), _rand.Next(Height)));
+                        var path = ship.FindBestPath(new Entity(-1, _rand.Next(Width - 1), _rand.Next(Height - 1)));
                         if (path.Count > 0)
                             Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
                         else
-                            Console.WriteLine("MOVE {0} {1}", _rand.Next(Width), _rand.Next(Height));
+                            Console.WriteLine("MOVE {0} {1}", _rand.Next(Width - 1), _rand.Next(Height - 1));
                     }
                     //Console.WriteLine("WAIT"); // Any valid action, such as "WAIT" or "MOVE x y"
                 }
