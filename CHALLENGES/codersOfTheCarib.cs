@@ -35,8 +35,8 @@ namespace CodersOfTheCari
 
         public class Point
         {
-            private int[,] DIRECTIONS_EVEN = new int[,] { { 1, 0 }, { 0, -1 }, { -1, -1 }, { -1, 0 }, { -1, 1 }, { 0, 1 } };
-            private int[,] DIRECTIONS_ODD = new int[,] { { 1, 0 }, { 1, -1 }, { 0, -1 }, { -1, 0 }, { 0, 1 }, { 1, 1 } };
+            internal int[,] DIRECTIONS_EVEN = new int[,] { { 1, 0 }, { 0, -1 }, { -1, -1 }, { -1, 0 }, { -1, 1 }, { 0, 1 } };
+            internal int[,] DIRECTIONS_ODD = new int[,] { { 1, 0 }, { 1, -1 }, { 0, -1 }, { -1, 0 }, { 0, 1 }, { 1, 1 } };
 
             public Point(double x, double y)
             {
@@ -48,14 +48,17 @@ namespace CodersOfTheCari
 
             public double Y { get; set; }
 
-            public double Distance2(Point p)
+            public double Distance(Point dst)
             {
-                return Math.Pow(X - p.X, 2) + Math.Pow(Y - p.Y, 2);
+                return this.toCubeCoordinate().distanceTo(dst.toCubeCoordinate());
             }
 
-            public double Distance(Point p)
+            private CubeCoordinate toCubeCoordinate()
             {
-                return Math.Sqrt(Distance2(p));
+                var xp = X - (Y - ((int)Y & 1)) / 2;
+                var zp = Y;
+                var yp = -(xp + zp);
+                return new CubeCoordinate(xp, yp, zp);
             }
 
             public Point Closest(Point a, Point b)
@@ -97,18 +100,18 @@ namespace CodersOfTheCari
                 return X >= 0 && X < Width && Y >= 0 && Y < Height;
             }
 
-            public Point Neighbor(int orientation)
+            public Point Neighbor(int Direction)
             {
                 double newY, newX;
                 if (this.Y % 2 == 1)
                 {
-                    newY = this.Y + DIRECTIONS_ODD[orientation, 1];
-                    newX = this.X + DIRECTIONS_ODD[orientation, 0];
+                    newY = this.Y + DIRECTIONS_ODD[Direction, 1];
+                    newX = this.X + DIRECTIONS_ODD[Direction, 0];
                 }
                 else
                 {
-                    newY = this.Y + DIRECTIONS_EVEN[orientation, 1];
-                    newX = this.X + DIRECTIONS_EVEN[orientation, 0];
+                    newY = this.Y + DIRECTIONS_EVEN[Direction, 1];
+                    newX = this.X + DIRECTIONS_EVEN[Direction, 0];
                 }
 
                 return new Point(newX, newY);
@@ -173,6 +176,40 @@ namespace CodersOfTheCari
                     angle -= 6;
                 }
                 return angle;
+            }
+        }
+
+        public class CubeCoordinate
+        {
+            private static int[,] directions = new int[,] { { 1, -1, 0 }, { +1, 0, -1 }, { 0, +1, -1 }, { -1, +1, 0 }, { -1, 0, +1 }, { 0, -1, +1 } };
+            private double x, y, z;
+
+            public CubeCoordinate(double x, double y, double z)
+            {
+                this.x = x;
+                this.y = y;
+                this.z = z;
+            }
+
+            private Point toOffsetPointinate()
+            {
+                var newX = x + (z - ((int)z & 1)) / 2;
+                var newY = z;
+                return new Point(newX, newY);
+            }
+
+            private CubeCoordinate neighbor(int orientation)
+            {
+                var nx = this.x + directions[orientation, 0];
+                var ny = this.y + directions[orientation, 1];
+                var nz = this.z + directions[orientation, 2];
+
+                return new CubeCoordinate(nx, ny, nz);
+            }
+
+            public double distanceTo(CubeCoordinate dst)
+            {
+                return (Math.Abs(x - dst.x) + Math.Abs(y - dst.y) + Math.Abs(z - dst.z)) / 2;
             }
         }
 
@@ -248,10 +285,34 @@ namespace CodersOfTheCari
             {
             }
 
+            public Point PredictedLocation(Ship target)
+            {
+                // predicted point
+                if (target.Speed == 0) return target as Point;
+
+                var eta = 1 + Math.Round(Distance(target) / 3);
+
+                if (target.Y % 2 == 0)
+                {
+                    target.X += DIRECTIONS_EVEN[target.Direction, 0] * target.Speed * eta;
+                    target.Y += DIRECTIONS_EVEN[target.Direction, 1] * target.Speed * eta;
+                }
+                else
+                {
+                    target.X += DIRECTIONS_ODD[target.Direction, 0] * target.Speed * eta;
+                    target.Y += DIRECTIONS_ODD[target.Direction, 1] * target.Speed * eta;
+                }
+
+                target.X = Math.Max(0, Math.Min(target.X, Width - 1));
+                target.Y = Math.Max(0, Math.Min(target.Y, Height - 1));
+
+                return target as Point;
+            }
+
             public Point GetNextPosition()
             {
                 Point nextPos = this as Point;
-                for (int i = 1; i < Speed; i++)
+                for (int i = 1; i < 1; i++)
                 {
                     var temp = nextPos.Neighbor(Direction);
                     if (!temp.IsInsideMap()) break;
@@ -383,6 +444,132 @@ namespace CodersOfTheCari
 
                 return bestPath;
             }
+
+            public string MoveTo(double x, double y)
+            {
+                string action = "";
+
+                Point currentPosition = this as Point;
+                Point targetPosition = new Point(x, y);
+
+                if (currentPosition.Equals(targetPosition))
+                {
+                    return "SLOWER";
+                }
+
+                double targetAngle, angleStraight, anglePort, angleStarboard, centerAngle, anglePortCenter, angleStarboardCenter;
+
+                switch (Speed)
+                {
+                    case 2:
+                        return "SLOWER";
+
+                    case 1:
+                        // Suppose we've moved first
+                        currentPosition = currentPosition.Neighbor(Direction);
+                        if (!currentPosition.IsInsideMap())
+                        {
+                            return "SLOWER";
+                        }
+
+                        // Target reached at next turn
+                        if (currentPosition.Equals(targetPosition))
+                        {
+                            return "WAIT";
+                        }
+
+                        // For each neighbor cell, find the closest to target
+                        targetAngle = currentPosition.Angle(targetPosition);
+                        angleStraight = Math.Min(Math.Abs(Direction - targetAngle), 6 - Math.Abs(Direction - targetAngle));
+                        anglePort = Math.Min(Math.Abs((Direction + 1) - targetAngle), Math.Abs((Direction - 5) - targetAngle));
+                        angleStarboard = Math.Min(Math.Abs((Direction + 5) - targetAngle), Math.Abs((Direction - 1) - targetAngle));
+
+                        centerAngle = currentPosition.Angle(new Point(Width / 2, Height / 2));
+                        anglePortCenter = Math.Min(Math.Abs((Direction + 1) - centerAngle), Math.Abs((Direction - 5) - centerAngle));
+                        angleStarboardCenter = Math.Min(Math.Abs((Direction + 5) - centerAngle), Math.Abs((Direction - 1) - centerAngle));
+
+                        // Next to target with bad angle, slow down then rotate (avoid to turn around
+                        // the target!)
+                        if (currentPosition.Distance(targetPosition) == 1 && angleStraight > 1.5)
+                        {
+                            return "SLOWER";
+                        }
+
+                        double distanceMin = int.MaxValue;
+
+                        // Test forward
+                        Point nextPosition = currentPosition.Neighbor(Direction);
+                        if (nextPosition.IsInsideMap())
+                        {
+                            distanceMin = nextPosition.Distance(targetPosition);
+                            action = "";
+                        }
+
+                        // Test port
+                        nextPosition = currentPosition.Neighbor((Direction + 1) % 6);
+                        if (nextPosition.IsInsideMap())
+                        {
+                            var distance = nextPosition.Distance(targetPosition);
+                            if (distanceMin == int.MaxValue || distance < distanceMin || distance == distanceMin && anglePort < angleStraight - 0.5)
+                            {
+                                distanceMin = distance;
+                                action = "PORT";
+                            }
+                        }
+
+                        // Test starboard
+                        nextPosition = currentPosition.Neighbor((Direction + 5) % 6);
+                        if (nextPosition.IsInsideMap())
+                        {
+                            var distance = nextPosition.Distance(targetPosition);
+                            if (distanceMin == int.MaxValue || distance < distanceMin
+                                    || (distance == distanceMin && angleStarboard < anglePort - 0.5 && action == "PORT")
+                                    || (distance == distanceMin && angleStarboard < angleStraight - 0.5 && action == null)
+                                    || (distance == distanceMin && action == "PORT" && angleStarboard == anglePort
+                                            && angleStarboardCenter < anglePortCenter)
+                                    || (distance == distanceMin && action == "PORT" && angleStarboard == anglePort
+                                            && angleStarboardCenter == anglePortCenter && (Direction == 1 || Direction == 4)))
+                            {
+                                distanceMin = distance;
+                                action = "STARBOARD";
+                            }
+                        }
+                        break;
+
+                    case 0:
+                        // Rotate ship towards target
+                        targetAngle = currentPosition.Angle(targetPosition);
+                        angleStraight = Math.Min(Math.Abs(Direction - targetAngle), 6 - Math.Abs(Direction - targetAngle));
+                        anglePort = Math.Min(Math.Abs((Direction + 1) - targetAngle), Math.Abs((Direction - 5) - targetAngle));
+                        angleStarboard = Math.Min(Math.Abs((Direction + 5) - targetAngle), Math.Abs((Direction - 1) - targetAngle));
+
+                        centerAngle = currentPosition.Angle(new Point(Width / 2, Height / 2));
+                        anglePortCenter = Math.Min(Math.Abs((Direction + 1) - centerAngle), Math.Abs((Direction - 5) - centerAngle));
+                        angleStarboardCenter = Math.Min(Math.Abs((Direction + 5) - centerAngle), Math.Abs((Direction - 1) - centerAngle));
+
+                        Point forwardPosition = currentPosition.Neighbor(Direction);
+
+                        action = null;
+
+                        if (anglePort <= angleStarboard)
+                        {
+                            action = "PORT";
+                        }
+
+                        if (angleStarboard < anglePort || angleStarboard == anglePort && angleStarboardCenter < anglePortCenter
+                                || angleStarboard == anglePort && angleStarboardCenter == anglePortCenter && (Direction == 1 || Direction == 4))
+                        {
+                            action = "STARBOARD";
+                        }
+
+                        if (forwardPosition.IsInsideMap() && angleStraight <= anglePort && angleStraight <= angleStarboard)
+                        {
+                            action = "FASTER";
+                        }
+                        break;
+                }
+                return action;
+            }
         }
 
         private static void Main(string[] args)
@@ -464,66 +651,96 @@ namespace CodersOfTheCari
                     var barrel = closestRum.FirstOrDefault();
                     var nextPos = ship.GetNextPosition();
                     var closestCannon = _entities.OfType<Cannonball>().OrderBy(c => c.Distance(ship)).FirstOrDefault();
-                    if (closestCannon != null && closestCannon.Distance(ship) < 2)
+
+                    if ((ship.Speed > 0 || barrel == null || enemyDistance < 2) &&
+                        enemyDistance < 6 && ship.CannonCooldown <= 0)
                     {
-                        Console.WriteLine("FASTER");
-                    }
-                    else if ((ship.Speed > 0 || barrel == null) &&
-                        enemyDistance < CannonRange * 0.5 &&
-                        (barrel == null || enemyDistance < barrel.Distance(ship)) &&
-                        ship.CannonCooldown <= 0)
-                    {
-                        var eta = 1 + Math.Round(enemyDistance / 3);
-                        var leadPos = enemy.GetNextPosition();
-                        var delta = leadPos.Subtract(enemy);
-                        var newPos = new Point(enemy.X + delta.X * eta, enemy.Y + delta.Y * eta);
+                        var newPos = ship.PredictedLocation(enemy);
+                        //new Point(enemy.X + delta.X * eta, enemy.Y + delta.Y * eta);
                         Console.WriteLine("FIRE {0} {1}", newPos.X, newPos.Y);
                         ship.CannonCooldown = CannonCooldown;
+                    }
+                    else if (closestCannon != null && closestCannon.Distance(ship) < 2)
+                    {
+                        Console.WriteLine("FASTER");
                     }
                     else if (enemyDistance > CannonRange * 0.5)
                     {
                         //var path = ship.FindBestPath(enemy);
                         //if (path.Count > 0)
                         //    Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
-                        //else
-                        Console.WriteLine("MOVE {0} {1}", enemy.X, enemy.Y);
+                        //elseif (
+                        Console.Error.WriteLine("Chasing enemy {0}", enemy.Id);
+                        if (_entities.OfType<Mine>().Any(m => m.Equals(nextPos) || m.Equals(ship.GetNextBow()) || m.Equals(ship.GetNextStern()) ||
+                                                              m.Equals(ship) || m.Equals(ship.Bow()) || m.Equals(ship.Stern())))
+                            Console.WriteLine("STARBOARD");
+                        else
+                            Console.WriteLine("MOVE {0} {1}", enemy.X, enemy.Y);
                     }
                     else if (barrel != null)
                     {
                         moves.Add(barrel);
-                        var path = ship.FindBestPath(barrel);
-                        Console.Error.WriteLine("CUR: {2} DEST {1} PATH {0}", string.Join(",", path), barrel, ship);
-                        if (path.Count > 0)
+                        //var path = ship.FindBestPath(barrel);
+                        //Console.Error.WriteLine("CUR: {2} DEST {1} PATH {0}", string.Join(",", path), barrel, ship);
+                        //if (path.Count > 0)
+                        //{
+                        int Direction = ship.Direction;
+                        var targetAngle = nextPos.Angle(barrel);
+                        var angleStraight = Math.Min(Math.Abs(Direction - targetAngle), 6 - Math.Abs(Direction - targetAngle));
+                        var anglePort = Math.Min(Math.Abs((Direction + 1) - targetAngle), Math.Abs((Direction - 5) - targetAngle));
+                        var angleStarboard = Math.Min(Math.Abs((Direction + 5) - targetAngle), Math.Abs((Direction - 1) - targetAngle));
+
+                        var centerAngle = nextPos.Angle(new Point(Width / 2, Height / 2));
+                        var anglePortCenter = Math.Min(Math.Abs((Direction + 1) - centerAngle), Math.Abs((Direction - 5) - centerAngle));
+                        var angleStarboardCenter = Math.Min(Math.Abs((Direction + 5) - centerAngle), Math.Abs((Direction - 1) - centerAngle));
+
+                        if (nextPos.Distance(barrel) == 1 && angleStraight > 1.5)
                         {
-                            int orientation = ship.Direction;
-                            var targetAngle = nextPos.Angle(barrel);
-                            var angleStraight = Math.Min(Math.Abs(orientation - targetAngle), 6 - Math.Abs(orientation - targetAngle));
-                            var anglePort = Math.Min(Math.Abs((orientation + 1) - targetAngle), Math.Abs((orientation - 5) - targetAngle));
-                            var angleStarboard = Math.Min(Math.Abs((orientation + 5) - targetAngle), Math.Abs((orientation - 1) - targetAngle));
-
-                            var centerAngle = nextPos.Angle(new Point(Width / 2, Height / 2));
-                            var anglePortCenter = Math.Min(Math.Abs((orientation + 1) - centerAngle), Math.Abs((orientation - 5) - centerAngle));
-                            var angleStarboardCenter = Math.Min(Math.Abs((orientation + 5) - centerAngle), Math.Abs((orientation - 1) - centerAngle));
-
-                            if (nextPos.Distance(barrel) == 1 && angleStraight > 1.5)
-                            {
-                                Console.WriteLine("SLOWER");
-                            }
+                            Console.WriteLine("SLOWER");
+                            continue;
+                        }
+                        var dir = ship.MoveTo(barrel.X, barrel.Y);
+                        Console.Error.WriteLine(dir);
+                        if (string.IsNullOrEmpty(dir))
+                        {
+                            if (_entities.OfType<Mine>().Any(m => m.Equals(nextPos) || m.Equals(ship.GetNextBow()) || m.Equals(ship.GetNextStern())))
+                                Console.WriteLine("STARBOARD DODGING!");
                             else
-                            {
-                                Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
-                            }
+                                Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
+                        }
+                        else if (dir == "STARBOARD")
+                        {
+                            var n = ship.Neighbor((ship.Direction + 5) % 6);
+                            if (_entities.OfType<Mine>().Any(m => m.Equals(n)))//|| m.Equals(ship.GetNextBow()) || m.Equals(ship.GetNextStern())))
+                                Console.WriteLine("MINE DODGING!");
+                            else
+                                Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
+                        }
+                        else if (dir == "PORT")
+                        {
+                            var n = ship.Neighbor((ship.Direction + 1) % 6);
+                            if (_entities.OfType<Mine>().Any(m => m.Equals(n)))//|| m.Equals(ship.GetNextBow()) || m.Equals(ship.GetNextStern())))
+                                Console.WriteLine("MINE DODGING!");
+                            else
+                                Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
                         }
                         else
                             Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
+                        //    else
+                        //    {
+                        //        Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
+                        //    }
+                        //}
+                        //else
+                        Console.Error.WriteLine("Chasing barrel {0}", barrel.Id);
                     }
                     else
                     {
-                        var path = ship.FindBestPath(new Entity(-1, _rand.Next(Width - 1), _rand.Next(Height - 1)));
-                        if (path.Count > 0)
-                            Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
-                        else
-                            Console.WriteLine("MOVE {0} {1}", _rand.Next(Width - 1), _rand.Next(Height - 1));
+                        //var path = ship.FindBestPath(new Entity(-1, _rand.Next(Width - 1), _rand.Next(Height - 1)));
+                        //if (path.Count > 0)
+                        //    Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
+                        //else
+                        Console.WriteLine("MOVE {0} {1}", _rand.Next(Width - 1), _rand.Next(Height - 1));
                     }
                     //Console.WriteLine("WAIT"); // Any valid action, such as "WAIT" or "MOVE x y"
                 }
