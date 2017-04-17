@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 /**
  * Auto-generated code below aims at helping you parse
@@ -14,6 +15,9 @@ namespace CodersOfTheCari
 {
     internal class Player
     {
+        private const int Lifetime = 4;
+        private const int PopulationSize = 4;
+
         private const int Width = 23;
         private const int Height = 21;
         private const int ShipLength = 3;
@@ -25,6 +29,7 @@ namespace CodersOfTheCari
         private const int MineSightDistance = 5;
         private const int CannonRange = 10;
         private const int CannonDirectDamage = 50;
+        private const int CannonIndirectDamage = 25;
         private const int CannonCooldown = 1;
         private const int MaxSpeed = 2;
 
@@ -33,7 +38,7 @@ namespace CodersOfTheCari
 
         private static Random _rand = new Random();
 
-        private enum Action
+        public enum Action
         {
             FASTER, SLOWER, PORT, STARBOARD, FIRE, MINE
         }
@@ -233,6 +238,7 @@ namespace CodersOfTheCari
 
         public class Entity : Point
         {
+            private object[] cache;
             public int Id { get; set; }
             public int Orientation { get; set; }
             public bool IsAlive { get; set; }
@@ -241,6 +247,19 @@ namespace CodersOfTheCari
                 : base(x, y)
             {
                 Id = id;
+                cache = new object[2];
+            }
+
+            public virtual void Save()
+            {
+                cache[0] = Orientation;
+                cache[1] = IsAlive;
+            }
+
+            public virtual void Load()
+            {
+                Orientation = (int)cache[0];
+                IsAlive = (bool)cache[1];
             }
 
             public override string ToString()
@@ -251,39 +270,62 @@ namespace CodersOfTheCari
 
         public class Barrel : Entity
         {
+            private object[] cache;
+
             public int Rum { get; set; }
 
             public Barrel(int id, double x, double y, int rum)
                 : base(id, x, y)
             {
                 Rum = rum;
+                cache = new object[1];
+            }
+
+            public override void Save()
+            {
+                cache[0] = Rum;
+            }
+
+            public override void Load()
+            {
+                Rum = (int)cache[0];
             }
         }
 
         public class Cannonball : Entity
         {
+            private object[] cache;
+
             public Point Target { get; set; }
             public int SourceId { get; set; }
             public Point SourcePosition { get; set; }
-
-            private int travelTime;
-
             public int TurnsToImpact { get; set; }
 
             public Cannonball(int id, double x, double y, int turns)
                 : base(id, x, y)
             {
                 TurnsToImpact = turns;
+                cache = new object[2];
             }
 
             public Cannonball(int id, Point target, Ship source, int remainingTurns)
-                : base(id, source.X, source.Y)
+                : this(id, source.X, source.Y, remainingTurns)
             {
                 Target = target;
                 SourceId = source.Id;
                 SourcePosition = source.Bow();
+            }
 
-                this.travelTime = remainingTurns;
+            public override void Save()
+            {
+                cache[0] = Target;
+                cache[1] = TurnsToImpact;
+            }
+
+            public override void Load()
+            {
+                Target = (Point)cache[0];
+                TurnsToImpact = (int)cache[1];
             }
         }
 
@@ -349,6 +391,8 @@ namespace CodersOfTheCari
 
         public class Ship : Entity
         {
+            private int[] cache = new int[4];
+
             public int Speed { get; set; }
             public int RumCarried { get; set; }
             public int Team { get; set; }
@@ -370,6 +414,23 @@ namespace CodersOfTheCari
             public Ship(int id)
                 : base(id, 0, 0)
             {
+                IsAlive = true;
+            }
+
+            public override void Save()
+            {
+                cache[0] = Speed;
+                cache[1] = RumCarried;
+                cache[2] = MineCooldown;
+                cache[3] = CannonCooldown;
+            }
+
+            public override void Load()
+            {
+                Speed = cache[0];
+                RumCarried = cache[1];
+                MineCooldown = cache[2];
+                CannonCooldown = cache[3];
             }
 
             public Point PredictedLocation(Ship target)
@@ -741,92 +802,256 @@ namespace CodersOfTheCari
                 }
                 return false;
             }
+
+            internal Ship Clone(DNA dna)
+            {
+                var ship = new Ship(Id)
+                {
+                    CannonCooldown = CannonCooldown,
+                    IsAlive = IsAlive,
+                    MineCooldown = MineCooldown,
+                    Orientation = Orientation,
+                    RumCarried = RumCarried,
+                    Speed = Speed,
+                    Team = Team,
+                    X = X,
+                    Y = Y,
+                    DNA = dna
+                };
+
+                return ship;
+            }
+
+            public DNA DNA { get; set; }
+
+            internal double Fitness()
+            {
+                double fitness = 0;
+                var livingShips = ships.Where(s => s.IsAlive);
+                var myRum = livingShips.Where(s => s.Team == 1).Sum(s => s.RumCarried);
+                var enemyRum = livingShips.Where(s => s.Team == 0).Sum(s => s.RumCarried);
+                fitness = myRum - enemyRum;
+
+                Console.Error.WriteLine("FITNESS: {0} {1} {2} {3}", fitness, myRum, enemyRum, livingShips.Count());
+                return fitness;
+            }
+
+            internal void Run()
+            {
+                for (int i = 0; i < Lifetime; i++)
+                {
+                    Action = DNA.Genes[i];
+                    Play();
+                }
+            }
         }
 
         /***********/
 
-        private void applyActions()
+        private static void decrementRum()
         {
-            foreach (var player in _entities.OfType<Ship>())
+            foreach (Ship ship in ships)
             {
-                foreach (Ship ship in _entities.OfType<Ship>().Where(s => s.IsAlive))
+                ship.Damage(1);
+            }
+        }
+
+        private static void updateInitialRum()
+        {
+            //foreach (Ship ship in ships) {
+            //    ship.initialHealth = ship.health;
+            //}
+        }
+
+        private static void moveCannonballs()
+        {
+            foreach (var ball in cannonballs)
+            {
+                if (ball.TurnsToImpact == 0)
                 {
-                    if (ship.MineCooldown > 0)
+                    ball.IsAlive = false;
+                    continue;
+                }
+                else if (ball.TurnsToImpact > 0)
+                {
+                    ball.TurnsToImpact--;
+                }
+
+                if (ball.TurnsToImpact == 0)
+                {
+                    cannonBallExplosions.Add(ball as Point);
+                }
+            }
+        }
+
+        private static List<Point> cannonBallExplosions = new List<Point>();
+        private static List<Damage> damage = new List<Damage>();
+
+        private static void explodeThings()
+        {
+            bool alive = true;
+            for (int i = 0; i < cannonBallExplosions.Count; i++)
+            {
+                var position = cannonBallExplosions[i];
+                foreach (Ship ship in ships.Where(s => s.IsAlive))
+                {
+                    if (position.Equals(ship.Bow()) || position.Equals(ship.Stern()))
                     {
-                        ship.MineCooldown--;
+                        damage.Add(new Damage(position, CannonIndirectDamage, true));
+                        ship.Damage(CannonIndirectDamage);
+                        cannonBallExplosions.Remove(position);
+                        alive = false;
+                        break;
                     }
-                    if (ship.CannonCooldown > 0)
+                    else if (position.Equals(ship))
                     {
-                        ship.CannonCooldown--;
+                        damage.Add(new Damage(position, CannonDirectDamage, true));
+                        ship.Damage(CannonDirectDamage);
+                        cannonBallExplosions.Remove(position);
+                        alive = false;
+                        break;
                     }
+                }
+                if (!alive) continue;
 
-                    ship.NewOrientation = ship.Orientation;
-
-                    if (ship.Action != null)
+                for (int j = 0; j < mines.Count; j++)
+                {
+                    var mine = mines[j];
+                    if (mine.IsAlive && mine.Equals(position))
                     {
-                        switch (ship.Action)
-                        {
-                            case Action.FASTER:
-                                if (ship.Speed < MaxSpeed)
-                                {
-                                    ship.Speed++;
-                                }
-                                break;
+                        damage.AddRange(mine.Explode(ships, true));
+                        mine.IsAlive = false;
+                        cannonBallExplosions.Remove(position);
+                        alive = false;
+                        break;
+                    }
+                }
 
-                            case Action.SLOWER:
-                                if (ship.Speed > 0)
-                                {
-                                    ship.Speed--;
-                                }
-                                break;
-
-                            case Action.PORT:
-                                ship.NewOrientation = (ship.Orientation + 1) % 6;
-                                break;
-
-                            case Action.STARBOARD:
-                                ship.NewOrientation = (ship.Orientation + 5) % 6;
-                                break;
-
-                            case Action.MINE:
-                                if (ship.MineCooldown == 0)
-                                {
-                                    Point target = ship.Stern().Neighbor((ship.Orientation + 3) % 6);
-
-                                    if (target.IsInsideMap())
-                                    {
-                                        bool cellIsFreeOfBarrels = !barrels.Any(barrel => barrel.Equals(target));
-                                        bool cellIsFreeOfShips = !ships.Where(b => b != ship).Any(b => b.At(target));
-
-                                        if (cellIsFreeOfBarrels && cellIsFreeOfShips)
-                                        {
-                                            ship.MineCooldown = MineCooldown;
-                                            Mine mine = new Mine(-1, target.X, target.Y);
-                                            mines.Add(mine);
-                                        }
-                                    }
-                                }
-                                break;
-
-                            case Action.FIRE:
-                                var distance = ship.Bow().Distance(ship.Target);
-                                if (ship.Target.IsInsideMap() && distance <= CannonRange && ship.CannonCooldown == 0)
-                                {
-                                    int travelTime = (int)(1 + Math.Round(ship.Bow().Distance(ship.Target) / 3.0));
-                                    cannonballs.Add(new Cannonball(-1, ship.Target, ship, travelTime));
-                                    ship.CannonCooldown = CannonCooldown;
-                                }
-                                break;
-
-                            default:
-                                break;
-                        }
+                if (!alive) continue;
+                for (int j = 0; j < barrels.Count; j++)
+                {
+                    var barrel = barrels[j];
+                    if (barrel.IsAlive && barrel.Equals(position))
+                    {
+                        damage.Add(new Damage(position, 0, true));
+                        barrel.IsAlive = false;
+                        cannonBallExplosions.Remove(position);
+                        break;
                     }
                 }
             }
         }
 
-        private bool checkCollisions(Ship ship)
+        internal static void Play()
+        {
+            moveCannonballs();
+            decrementRum();
+            updateInitialRum();
+
+            applyActions();
+            moveShips();
+            rotateShips();
+
+            explodeThings();
+            // For each sunk ship, create a new rum barrel with the amount of rum the ship had at the begin of the turn (up to 30).
+            //for (Ship ship : ships) {
+            //    if (ship.health <= 0) {
+            //        int reward = Math.min(REWARD_RUM_BARREL_VALUE, ship.initialHealth);
+            //        if (reward > 0) {
+            //            barrels.add(new RumBarrel(ship.position.x, ship.position.y, reward));
+            //        }
+            //    }
+            //}
+
+            //for (Coord position : cannonBallExplosions) {
+            //    damage.add(new Damage(position, 0, false));
+            //}
+
+            foreach (var ship in ships)
+            {
+                if (ship.RumCarried <= 0)
+                {
+                    ship.IsAlive = false;
+                }
+            }
+        }
+
+        internal static void applyActions()
+        {
+            foreach (Ship ship in _entities.OfType<Ship>().Where(s => s.IsAlive))
+            {
+                if (ship.MineCooldown > 0)
+                {
+                    ship.MineCooldown--;
+                }
+                if (ship.CannonCooldown > 0)
+                {
+                    ship.CannonCooldown--;
+                }
+
+                ship.NewOrientation = ship.Orientation;
+
+                switch (ship.Action)
+                {
+                    case Action.FASTER:
+                        if (ship.Speed < MaxSpeed)
+                        {
+                            ship.Speed++;
+                        }
+                        break;
+
+                    case Action.SLOWER:
+                        if (ship.Speed > 0)
+                        {
+                            ship.Speed--;
+                        }
+                        break;
+
+                    case Action.PORT:
+                        ship.NewOrientation = (ship.Orientation + 1) % 6;
+                        break;
+
+                    case Action.STARBOARD:
+                        ship.NewOrientation = (ship.Orientation + 5) % 6;
+                        break;
+
+                    case Action.MINE:
+                        if (ship.MineCooldown == 0)
+                        {
+                            Point target = ship.Stern().Neighbor((ship.Orientation + 3) % 6);
+
+                            if (target.IsInsideMap())
+                            {
+                                bool cellIsFreeOfBarrels = !barrels.Any(barrel => barrel.Equals(target));
+                                bool cellIsFreeOfShips = !ships.Where(b => b != ship).Any(b => b.At(target));
+
+                                if (cellIsFreeOfBarrels && cellIsFreeOfShips)
+                                {
+                                    ship.MineCooldown = MineCooldown;
+                                    Mine mine = new Mine(-1, target.X, target.Y);
+                                    mines.Add(mine);
+                                }
+                            }
+                        }
+                        break;
+
+                    case Action.FIRE:
+                        var distance = ship.Bow().Distance(ship.Target);
+                        if (ship.Target.IsInsideMap() && distance <= CannonRange && ship.CannonCooldown == 0)
+                        {
+                            int travelTime = (int)(1 + Math.Round(ship.Bow().Distance(ship.Target) / 3.0));
+                            cannonballs.Add(new Cannonball(-1, ship.Target, ship, travelTime));
+                            ship.CannonCooldown = CannonCooldown;
+                        }
+                        break;
+
+                    default:
+                        break;
+                }
+            }
+        }
+
+        private static bool checkCollisions(Ship ship)
         {
             Point bow = ship.Bow();
             Point stern = ship.Stern();
@@ -857,7 +1082,7 @@ namespace CodersOfTheCari
             return ship.RumCarried <= 0;
         }
 
-        private void moveShips()
+        private static void moveShips()
         {
             // --- Go forward ---
             for (int i = 1; i <= MaxSpeed; i++)
@@ -931,7 +1156,7 @@ namespace CodersOfTheCari
             }
         }
 
-        private void rotateShips()
+        private static void rotateShips()
         {
             // Rotate
             foreach (Ship ship in ships.Where(s => s.IsAlive))
@@ -986,10 +1211,153 @@ namespace CodersOfTheCari
         }
 
         /************/
-        private List<Ship> ships = new List<Ship>();
-        private List<Barrel> barrels = new List<Barrel>();
-        private List<Mine> mines = new List<Mine>();
-        private List<Cannonball> cannonballs = new List<Cannonball>();
+
+        /// <summary>
+        /// GA
+        /// </summary>
+        public class DNA
+        {
+            private const int ActionLength = 5;
+            public Action[] Genes { get; set; }
+
+            public DNA()
+            {
+                Genes = new Action[Lifetime];
+                for (int i = 0; i < Lifetime; i++)
+                {
+                    Action move = (Action)_rand.Next(ActionLength);
+                    Genes[i] = move;
+                }
+            }
+
+            public DNA(Action[] genes)
+            {
+                Genes = genes;
+            }
+
+            public DNA Crossover(DNA partner)
+            {
+                var child = new Action[Lifetime];
+                int crossoverPoint = _rand.Next(Lifetime);
+                for (int i = 0; i < Lifetime; i++)
+                {
+                    if (i > crossoverPoint)
+                        child[i] = Genes[i];
+                    else
+                        child[i] = partner.Genes[i];
+                }
+
+                return new DNA(child);
+            }
+
+            public void Mutate(float rate)
+            {
+                for (int i = 0; i < Lifetime; i++)
+                {
+                    if (_rand.NextDouble() < rate)
+                    {
+                        Action action = (Action)_rand.Next(ActionLength);
+                        Genes[i] = action;
+                    }
+                }
+            }
+        }
+
+        public static int generations = 0;
+
+        public class Population
+        {
+            private float mutationRate = 1.0f;
+
+            public Ship[] Pop { get; set; }
+            public List<Ship> MatingPool { get; set; }
+
+            public Population(float mutationRate, int populationSize, Ship ship)
+            {
+                this.mutationRate = mutationRate;
+                Pop = new Ship[populationSize];
+                MatingPool = new List<Ship>();
+                for (int i = 0; i < populationSize; i++)
+                {
+                    Pop[i] = ship.Clone(new DNA());
+                }
+            }
+
+            public void Live()
+            {
+                for (int i = 0; i < PopulationSize; i++)
+                {
+                    Pop[i].Run();
+                }
+            }
+
+            public void Fitness()
+            {
+                for (int i = 0; i < PopulationSize; i++)
+                {
+                    Pop[i].Fitness();
+                }
+            }
+
+            public DNA Selection()
+            {
+                MatingPool.Clear();
+
+                var s = GetMaxFitness();
+                double maxFitness = s.Fitness();
+
+                for (int i = 0; i < PopulationSize; i++)
+                {
+                    MatingPool.Add(Pop[i]);
+                }
+
+                return s.DNA;
+            }
+
+            public void Reproduction()
+            {
+                _entities.ForEach(e => e.Load());
+                for (int i = 0; i < PopulationSize; i++)
+                {
+                    int m = _rand.Next(MatingPool.Count);
+                    int f = _rand.Next(MatingPool.Count);
+
+                    var mom = MatingPool[m];
+                    var dad = MatingPool[f];
+
+                    var momGenes = mom.DNA;
+                    var dadGenes = dad.DNA;
+
+                    var child = momGenes.Crossover(dadGenes);
+                    child.Mutate(mutationRate);
+
+                    Pop[i] = mom.Clone(child);
+                }
+                generations++;
+            }
+
+            public Ship GetMaxFitness()
+            {
+                var maxFitness = double.MinValue;
+                Ship max = Pop[0];
+                for (int i = 0; i < PopulationSize; i++)
+                {
+                    if (Pop[i].Fitness() > maxFitness)
+                    {
+                        maxFitness = Pop[i].Fitness();
+                        max = Pop[i];
+                    }
+                }
+
+                return max;
+            }
+        }
+
+        private static List<Ship> ships = new List<Ship>();
+        private static List<Barrel> barrels = new List<Barrel>();
+        private static List<Mine> mines = new List<Mine>();
+        private static List<Cannonball> cannonballs = new List<Cannonball>();
+        private static Stopwatch stopwatch;
 
         private static void Main(string[] args)
         {
@@ -1002,6 +1370,10 @@ namespace CodersOfTheCari
                 _round++;
                 _entities.Clear();
                 shipsAlive.Clear();
+                barrels.Clear();
+                cannonballs.Clear();
+                mines.Clear();
+
                 int myShipCount = int.Parse(Console.ReadLine()); // the number of remaining ships
                 int entityCount = int.Parse(Console.ReadLine()); // the number of entities (e.g. ships, mines or cannonballs)
                 for (int i = 0; i < entityCount; i++)
@@ -1041,26 +1413,73 @@ namespace CodersOfTheCari
 
                         case "BARREL":
                             ent = new Barrel(entityId, x, y, arg1);
+                            barrels.Add((Barrel)ent);
                             break;
 
                         case "CANNONBALL":
                             ent = new Cannonball(entityId, x, y, arg1);
+                            cannonballs.Add((Cannonball)ent);
                             break;
 
                         case "MINE":
                             ent = new Mine(entityId, x, y);
+                            mines.Add((Mine)ent);
                             break;
                     }
                     _entities.Add(ent);
                 }
-                var allShips = myShip.Concat(enemyShip);
-                foreach (var ship in allShips.Where(s => !shipsAlive.Contains(s)))
+                ships = myShip.Concat(enemyShip).ToList();
+                foreach (var ship in ships.Where(s => !shipsAlive.Contains(s)))
                 {
                     ship.IsAlive = false;
                 }
-                //Console.Error.WriteLine("Ents {0}", string.Join(",", _entities));
-                int timeLimit = _round == 0 ? 1000 : 50;
+                _entities.ForEach(e => e.Save());
 
+                //Console.Error.WriteLine("Ents {0}", string.Join(",", _entities));
+                int timeLimit = 30;// _round == 0 ? 1000 : 50;
+                stopwatch = Stopwatch.StartNew();
+                var pop = new Population(1.0f, PopulationSize, myShip[0]);
+                DNA best = null;
+                while (stopwatch.ElapsedMilliseconds < timeLimit)
+                {
+                    pop.Live();
+                    pop.Fitness();
+                    best = pop.Selection();
+
+                    pop.Reproduction();
+                }
+
+                if (_round > 0) Console.Error.WriteLine("AVG: {0}", generations / _round);
+                for (int i = 0; i < myShipCount; i++)
+                {
+                    switch (best.Genes[0])
+                    {
+                        case Action.FASTER:
+                            Console.WriteLine("FASTER");
+                            break;
+
+                        case Action.SLOWER:
+                            Console.WriteLine("SLOWER");
+                            break;
+
+                        case Action.PORT:
+                            Console.WriteLine("PORT");
+                            break;
+
+                        case Action.STARBOARD:
+                            Console.WriteLine("STARBOARD");
+                            break;
+
+                        case Action.MINE:
+                            Console.WriteLine("MINE");
+                            break;
+
+                        default:
+                            Console.WriteLine("WAIT");
+                            break;
+                    }
+                }
+                continue;
                 var moves = new List<Entity>();
                 foreach (var ship in myShip.Where(s => s.IsAlive))
                 {
