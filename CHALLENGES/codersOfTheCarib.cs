@@ -33,6 +33,11 @@ namespace CodersOfTheCari
 
         private static Random _rand = new Random();
 
+        private enum Action
+        {
+            FASTER, SLOWER, PORT, STARBOARD, FIRE, MINE
+        }
+
         public class Point
         {
             internal int[,] DIRECTIONS_EVEN = new int[,] { { 1, 0 }, { 0, -1 }, { -1, -1 }, { -1, 0 }, { -1, 1 }, { 0, 1 } };
@@ -213,10 +218,24 @@ namespace CodersOfTheCari
             }
         }
 
+        public class Damage : Point
+        {
+            private int health;
+            private bool hit;
+
+            public Damage(Point position, int health, bool hit)
+                : base(position.X, position.Y)
+            {
+                this.health = health;
+                this.hit = hit;
+            }
+        }
+
         public class Entity : Point
         {
             public int Id { get; set; }
-            public int Direction { get; set; }
+            public int Orientation { get; set; }
+            public bool IsAlive { get; set; }
 
             public Entity(int id, double x, double y)
                 : base(x, y)
@@ -243,12 +262,28 @@ namespace CodersOfTheCari
 
         public class Cannonball : Entity
         {
+            public Point Target { get; set; }
+            public int SourceId { get; set; }
+            public Point SourcePosition { get; set; }
+
+            private int travelTime;
+
             public int TurnsToImpact { get; set; }
 
             public Cannonball(int id, double x, double y, int turns)
                 : base(id, x, y)
             {
                 TurnsToImpact = turns;
+            }
+
+            public Cannonball(int id, Point target, Ship source, int remainingTurns)
+                : base(id, source.X, source.Y)
+            {
+                Target = target;
+                SourceId = source.Id;
+                SourcePosition = source.Bow();
+
+                this.travelTime = remainingTurns;
             }
         }
 
@@ -257,6 +292,58 @@ namespace CodersOfTheCari
             public Mine(int id, double x, double y)
                 : base(id, x, y)
             {
+            }
+
+            internal List<Damage> Explode(List<Ship> ships, bool force)
+            {
+                List<Damage> damage = new List<Damage>();
+                Ship victim = null;
+
+                foreach (Ship ship in ships)
+                {
+                    if (this.Equals(ship.Bow()) || this.Equals(ship.Stern()) || this.Equals(ship))
+                    {
+                        damage.Add(new Damage(this, MineDamage, true));
+                        ship.Damage(MineDamage);
+                        victim = ship;
+                    }
+                }
+
+                if (force || victim != null)
+                {
+                    if (victim == null)
+                    {
+                        damage.Add(new Damage(this, MineDamage, true));
+                    }
+
+                    foreach (Ship ship in ships)
+                    {
+                        if (ship != victim)
+                        {
+                            Point impactPosition = null;
+                            if (ship.Stern().Distance(this) <= 1)
+                            {
+                                impactPosition = ship.Stern();
+                            }
+                            if (ship.Bow().Distance(this) <= 1)
+                            {
+                                impactPosition = ship.Bow();
+                            }
+                            if (ship.Distance(this) <= 1)
+                            {
+                                impactPosition = ship as Point;
+                            }
+
+                            if (impactPosition != null)
+                            {
+                                ship.Damage(MineSplash);
+                                damage.Add(new Damage(impactPosition, MineSplash, true));
+                            }
+                        }
+                    }
+                }
+
+                return damage;
             }
         }
 
@@ -267,12 +354,12 @@ namespace CodersOfTheCari
             public int Team { get; set; }
             public int MineCooldown { get; set; }
             public int CannonCooldown { get; set; }
-            public bool IsAlive { get; set; }
+            public Point Target { get; set; }
 
             public Ship(int id, double x, double y, int rotation, int speed, int rum, int team)
                 : base(id, x, y)
             {
-                Direction = rotation;
+                Orientation = rotation;
                 Speed = speed;
                 RumCarried = rum;
                 Team = team;
@@ -294,13 +381,13 @@ namespace CodersOfTheCari
 
                 if (target.Y % 2 == 0)
                 {
-                    target.X += DIRECTIONS_EVEN[target.Direction, 0] * target.Speed * eta;
-                    target.Y += DIRECTIONS_EVEN[target.Direction, 1] * target.Speed * eta;
+                    target.X += DIRECTIONS_EVEN[target.Orientation, 0] * target.Speed * eta;
+                    target.Y += DIRECTIONS_EVEN[target.Orientation, 1] * target.Speed * eta;
                 }
                 else
                 {
-                    target.X += DIRECTIONS_ODD[target.Direction, 0] * target.Speed * eta;
-                    target.Y += DIRECTIONS_ODD[target.Direction, 1] * target.Speed * eta;
+                    target.X += DIRECTIONS_ODD[target.Orientation, 0] * target.Speed * eta;
+                    target.Y += DIRECTIONS_ODD[target.Orientation, 1] * target.Speed * eta;
                 }
 
                 target.X = Math.Max(0, Math.Min(target.X, Width - 1));
@@ -314,7 +401,7 @@ namespace CodersOfTheCari
                 Point nextPos = this as Point;
                 for (int i = 1; i < 1; i++)
                 {
-                    var temp = nextPos.Neighbor(Direction);
+                    var temp = nextPos.Neighbor(Orientation);
                     if (!temp.IsInsideMap()) break;
                     nextPos = temp;
                 }
@@ -330,7 +417,7 @@ namespace CodersOfTheCari
                     {
                         X = p.X,
                         Y = p.Y,
-                        Direction = Direction
+                        Orientation = Orientation
                     };
                 return s.Bow();
             }
@@ -343,26 +430,26 @@ namespace CodersOfTheCari
                 {
                     X = p.X,
                     Y = p.Y,
-                    Direction = Direction
+                    Orientation = Orientation
                 };
                 return s.Stern();
             }
 
             public Point Bow()
             {
-                return Neighbor(Direction);
+                return Neighbor(Orientation);
             }
 
             public Point Stern()
             {
-                return Neighbor(((int)Direction + 3) % 6);
+                return Neighbor(((int)Orientation + 3) % 6);
             }
 
             internal void Update(int x, int y, int direction, int speed, int rum)
             {
                 X = x;
                 Y = y;
-                Direction = direction;
+                Orientation = direction;
                 Speed = speed;
                 RumCarried = rum;
                 if (CannonCooldown > 0) CannonCooldown--;
@@ -466,7 +553,7 @@ namespace CodersOfTheCari
 
                     case 1:
                         // Suppose we've moved first
-                        currentPosition = currentPosition.Neighbor(Direction);
+                        currentPosition = currentPosition.Neighbor(Orientation);
                         if (!currentPosition.IsInsideMap())
                         {
                             return "SLOWER";
@@ -480,13 +567,13 @@ namespace CodersOfTheCari
 
                         // For each neighbor cell, find the closest to target
                         targetAngle = currentPosition.Angle(targetPosition);
-                        angleStraight = Math.Min(Math.Abs(Direction - targetAngle), 6 - Math.Abs(Direction - targetAngle));
-                        anglePort = Math.Min(Math.Abs((Direction + 1) - targetAngle), Math.Abs((Direction - 5) - targetAngle));
-                        angleStarboard = Math.Min(Math.Abs((Direction + 5) - targetAngle), Math.Abs((Direction - 1) - targetAngle));
+                        angleStraight = Math.Min(Math.Abs(Orientation - targetAngle), 6 - Math.Abs(Orientation - targetAngle));
+                        anglePort = Math.Min(Math.Abs((Orientation + 1) - targetAngle), Math.Abs((Orientation - 5) - targetAngle));
+                        angleStarboard = Math.Min(Math.Abs((Orientation + 5) - targetAngle), Math.Abs((Orientation - 1) - targetAngle));
 
                         centerAngle = currentPosition.Angle(new Point(Width / 2, Height / 2));
-                        anglePortCenter = Math.Min(Math.Abs((Direction + 1) - centerAngle), Math.Abs((Direction - 5) - centerAngle));
-                        angleStarboardCenter = Math.Min(Math.Abs((Direction + 5) - centerAngle), Math.Abs((Direction - 1) - centerAngle));
+                        anglePortCenter = Math.Min(Math.Abs((Orientation + 1) - centerAngle), Math.Abs((Orientation - 5) - centerAngle));
+                        angleStarboardCenter = Math.Min(Math.Abs((Orientation + 5) - centerAngle), Math.Abs((Orientation - 1) - centerAngle));
 
                         // Next to target with bad angle, slow down then rotate (avoid to turn around
                         // the target!)
@@ -498,7 +585,7 @@ namespace CodersOfTheCari
                         double distanceMin = int.MaxValue;
 
                         // Test forward
-                        Point nextPosition = currentPosition.Neighbor(Direction);
+                        Point nextPosition = currentPosition.Neighbor(Orientation);
                         if (nextPosition.IsInsideMap())
                         {
                             distanceMin = nextPosition.Distance(targetPosition);
@@ -506,7 +593,7 @@ namespace CodersOfTheCari
                         }
 
                         // Test port
-                        nextPosition = currentPosition.Neighbor((Direction + 1) % 6);
+                        nextPosition = currentPosition.Neighbor((Orientation + 1) % 6);
                         if (nextPosition.IsInsideMap())
                         {
                             var distance = nextPosition.Distance(targetPosition);
@@ -518,7 +605,7 @@ namespace CodersOfTheCari
                         }
 
                         // Test starboard
-                        nextPosition = currentPosition.Neighbor((Direction + 5) % 6);
+                        nextPosition = currentPosition.Neighbor((Orientation + 5) % 6);
                         if (nextPosition.IsInsideMap())
                         {
                             var distance = nextPosition.Distance(targetPosition);
@@ -528,7 +615,7 @@ namespace CodersOfTheCari
                                     || (distance == distanceMin && action == "PORT" && angleStarboard == anglePort
                                             && angleStarboardCenter < anglePortCenter)
                                     || (distance == distanceMin && action == "PORT" && angleStarboard == anglePort
-                                            && angleStarboardCenter == anglePortCenter && (Direction == 1 || Direction == 4)))
+                                            && angleStarboardCenter == anglePortCenter && (Orientation == 1 || Orientation == 4)))
                             {
                                 distanceMin = distance;
                                 action = "STARBOARD";
@@ -539,15 +626,15 @@ namespace CodersOfTheCari
                     case 0:
                         // Rotate ship towards target
                         targetAngle = currentPosition.Angle(targetPosition);
-                        angleStraight = Math.Min(Math.Abs(Direction - targetAngle), 6 - Math.Abs(Direction - targetAngle));
-                        anglePort = Math.Min(Math.Abs((Direction + 1) - targetAngle), Math.Abs((Direction - 5) - targetAngle));
-                        angleStarboard = Math.Min(Math.Abs((Direction + 5) - targetAngle), Math.Abs((Direction - 1) - targetAngle));
+                        angleStraight = Math.Min(Math.Abs(Orientation - targetAngle), 6 - Math.Abs(Orientation - targetAngle));
+                        anglePort = Math.Min(Math.Abs((Orientation + 1) - targetAngle), Math.Abs((Orientation - 5) - targetAngle));
+                        angleStarboard = Math.Min(Math.Abs((Orientation + 5) - targetAngle), Math.Abs((Orientation - 1) - targetAngle));
 
                         centerAngle = currentPosition.Angle(new Point(Width / 2, Height / 2));
-                        anglePortCenter = Math.Min(Math.Abs((Direction + 1) - centerAngle), Math.Abs((Direction - 5) - centerAngle));
-                        angleStarboardCenter = Math.Min(Math.Abs((Direction + 5) - centerAngle), Math.Abs((Direction - 1) - centerAngle));
+                        anglePortCenter = Math.Min(Math.Abs((Orientation + 1) - centerAngle), Math.Abs((Orientation - 5) - centerAngle));
+                        angleStarboardCenter = Math.Min(Math.Abs((Orientation + 5) - centerAngle), Math.Abs((Orientation - 1) - centerAngle));
 
-                        Point forwardPosition = currentPosition.Neighbor(Direction);
+                        Point forwardPosition = currentPosition.Neighbor(Orientation);
 
                         action = null;
 
@@ -557,7 +644,7 @@ namespace CodersOfTheCari
                         }
 
                         if (angleStarboard < anglePort || angleStarboard == anglePort && angleStarboardCenter < anglePortCenter
-                                || angleStarboard == anglePort && angleStarboardCenter == anglePortCenter && (Direction == 1 || Direction == 4))
+                                || angleStarboard == anglePort && angleStarboardCenter == anglePortCenter && (Orientation == 1 || Orientation == 4))
                         {
                             action = "STARBOARD";
                         }
@@ -570,7 +657,339 @@ namespace CodersOfTheCari
                 }
                 return action;
             }
+
+            public int NewOrientation { get; set; }
+
+            public Action Action { get; set; }
+
+            internal bool At(Point target)
+            {
+                Point stern = Stern();
+                Point bow = Bow();
+                return stern != null && stern.Equals(target) || bow != null && bow.Equals(target) || this.Equals(target);
+            }
+
+            internal void Heal(int health)
+            {
+                this.RumCarried += health;
+                if (this.RumCarried > MaxRum)
+                {
+                    this.RumCarried = MaxRum;
+                }
+            }
+
+            internal void Damage(int health)
+            {
+                this.RumCarried -= health;
+                if (this.RumCarried <= 0)
+                {
+                    this.RumCarried = 0;
+                }
+            }
+
+            public Point NewPosition { get; set; }
+
+            public Point NewBowCoordinate { get; set; }
+
+            public Point NewSternCoordinate { get; set; }
+
+            public Point NewStern()
+            {
+                return Neighbor((NewOrientation + 3) % 6);
+            }
+
+            public Point NewBow()
+            {
+                return Neighbor(NewOrientation);
+            }
+
+            public bool newBowIntersect(Ship other)
+            {
+                return NewBowCoordinate != null && (NewBowCoordinate.Equals(other.NewBowCoordinate) || NewBowCoordinate.Equals(other.NewPosition)
+                        || NewBowCoordinate.Equals(other.NewSternCoordinate));
+            }
+
+            public bool NewBowIntersect(List<Ship> ships)
+            {
+                foreach (Ship other in ships)
+                {
+                    if (this != other && newBowIntersect(other))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            public bool newPositionsIntersect(Ship other)
+            {
+                bool sternCollision = NewSternCoordinate != null && (NewSternCoordinate.Equals(other.NewBowCoordinate)
+                        || NewSternCoordinate.Equals(other.NewPosition) || NewSternCoordinate.Equals(other.NewSternCoordinate));
+                bool centerCollision = NewPosition != null && (NewPosition.Equals(other.NewBowCoordinate) || NewPosition.Equals(other.NewPosition)
+                        || NewPosition.Equals(other.NewSternCoordinate));
+                return newBowIntersect(other) || sternCollision || centerCollision;
+            }
+
+            public bool NewPositionsIntersect(List<Ship> ships)
+            {
+                foreach (Ship other in ships)
+                {
+                    if (this != other && newPositionsIntersect(other))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
         }
+
+        /***********/
+
+        private void applyActions()
+        {
+            foreach (var player in _entities.OfType<Ship>())
+            {
+                foreach (Ship ship in _entities.OfType<Ship>().Where(s => s.IsAlive))
+                {
+                    if (ship.MineCooldown > 0)
+                    {
+                        ship.MineCooldown--;
+                    }
+                    if (ship.CannonCooldown > 0)
+                    {
+                        ship.CannonCooldown--;
+                    }
+
+                    ship.NewOrientation = ship.Orientation;
+
+                    if (ship.Action != null)
+                    {
+                        switch (ship.Action)
+                        {
+                            case Action.FASTER:
+                                if (ship.Speed < MaxSpeed)
+                                {
+                                    ship.Speed++;
+                                }
+                                break;
+
+                            case Action.SLOWER:
+                                if (ship.Speed > 0)
+                                {
+                                    ship.Speed--;
+                                }
+                                break;
+
+                            case Action.PORT:
+                                ship.NewOrientation = (ship.Orientation + 1) % 6;
+                                break;
+
+                            case Action.STARBOARD:
+                                ship.NewOrientation = (ship.Orientation + 5) % 6;
+                                break;
+
+                            case Action.MINE:
+                                if (ship.MineCooldown == 0)
+                                {
+                                    Point target = ship.Stern().Neighbor((ship.Orientation + 3) % 6);
+
+                                    if (target.IsInsideMap())
+                                    {
+                                        bool cellIsFreeOfBarrels = !barrels.Any(barrel => barrel.Equals(target));
+                                        bool cellIsFreeOfShips = !ships.Where(b => b != ship).Any(b => b.At(target));
+
+                                        if (cellIsFreeOfBarrels && cellIsFreeOfShips)
+                                        {
+                                            ship.MineCooldown = MineCooldown;
+                                            Mine mine = new Mine(-1, target.X, target.Y);
+                                            mines.Add(mine);
+                                        }
+                                    }
+                                }
+                                break;
+
+                            case Action.FIRE:
+                                var distance = ship.Bow().Distance(ship.Target);
+                                if (ship.Target.IsInsideMap() && distance <= CannonRange && ship.CannonCooldown == 0)
+                                {
+                                    int travelTime = (int)(1 + Math.Round(ship.Bow().Distance(ship.Target) / 3.0));
+                                    cannonballs.Add(new Cannonball(-1, ship.Target, ship, travelTime));
+                                    ship.CannonCooldown = CannonCooldown;
+                                }
+                                break;
+
+                            default:
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+
+        private bool checkCollisions(Ship ship)
+        {
+            Point bow = ship.Bow();
+            Point stern = ship.Stern();
+            Point center = ship as Point;
+
+            // Collision with the barrels
+            foreach (var barrel in barrels.Where(b => b.IsAlive))
+            {
+                if (barrel.Equals(bow) || barrel.Equals(stern) || barrel.Equals(center))
+                {
+                    ship.Heal(barrel.Rum);
+                    barrel.IsAlive = false;
+                }
+            }
+
+            // Collision with the mines
+            foreach (var mine in mines.Where(m => m.IsAlive))
+            {
+                List<Damage> mineDamage = mine.Explode(ships, false);
+
+                if (mineDamage.Count > 0)
+                {
+                    //damage.addAll(mineDamage);
+                    mine.IsAlive = false;
+                }
+            }
+
+            return ship.RumCarried <= 0;
+        }
+
+        private void moveShips()
+        {
+            // --- Go forward ---
+            for (int i = 1; i <= MaxSpeed; i++)
+            {
+                foreach (Ship ship in ships.Where(s => s.IsAlive))
+                {
+                    ship.NewPosition = ship as Point;
+                    ship.NewBowCoordinate = ship.Bow();
+                    ship.NewSternCoordinate = ship.Stern();
+
+                    if (i > ship.Speed)
+                    {
+                        continue;
+                    }
+
+                    Point newCoordinate = ship.Neighbor(ship.Orientation);
+
+                    if (newCoordinate.IsInsideMap())
+                    {
+                        // Set new coordinate.
+                        ship.NewPosition = newCoordinate;
+                        ship.NewBowCoordinate = newCoordinate.Neighbor(ship.Orientation);
+                        ship.NewSternCoordinate = newCoordinate.Neighbor((ship.Orientation + 3) % 6);
+                    }
+                    else
+                    {
+                        // Stop ship!
+                        ship.Speed = 0;
+                    }
+                }
+
+                // Check ship and obstacles collisions
+                List<Ship> collisions = new List<Ship>();
+                bool collisionDetected = true;
+                while (collisionDetected)
+                {
+                    collisionDetected = false;
+
+                    foreach (Ship ship in ships)
+                    {
+                        if (ship.NewBowIntersect(ships))
+                        {
+                            collisions.Add(ship);
+                        }
+                    }
+
+                    foreach (Ship ship in collisions)
+                    {
+                        // Revert last move
+                        ship.NewPosition = ship as Point;
+                        ship.NewBowCoordinate = ship.Bow();
+                        ship.NewSternCoordinate = ship.Stern();
+
+                        // Stop ships
+                        ship.Speed = 0;
+
+                        collisionDetected = true;
+                    }
+                    collisions.Clear();
+                }
+
+                foreach (Ship ship in ships.Where(s => s.IsAlive))
+                {
+                    ship.X = ship.NewPosition.X;
+                    ship.Y = ship.NewPosition.Y;
+                    if (checkCollisions(ship))
+                    {
+                        ship.IsAlive = false;  //LOST ? ?
+                    }
+                }
+            }
+        }
+
+        private void rotateShips()
+        {
+            // Rotate
+            foreach (Ship ship in ships.Where(s => s.IsAlive))
+            {
+                ship.NewPosition = ship as Point;
+                ship.NewBowCoordinate = ship.NewBow();
+                ship.NewSternCoordinate = ship.NewStern();
+            }
+
+            // Check collisions
+            bool collisionDetected = true;
+            List<Ship> collisions = new List<Ship>();
+            while (collisionDetected)
+            {
+                collisionDetected = false;
+
+                foreach (Ship ship in ships)
+                {
+                    if (ship.NewPositionsIntersect(ships))
+                    {
+                        collisions.Add(ship);
+                    }
+                }
+
+                foreach (Ship ship in collisions)
+                {
+                    ship.NewOrientation = ship.Orientation;
+                    ship.NewBowCoordinate = ship.NewBow();
+                    ship.NewSternCoordinate = ship.NewStern();
+                    ship.Speed = 0;
+                    collisionDetected = true;
+                }
+
+                collisions.Clear();
+            }
+
+            // Apply rotation
+            foreach (Ship ship in ships.Where(s => s.IsAlive))
+            {
+                if (ship.RumCarried == 0)
+                {
+                    continue;
+                }
+
+                ship.Orientation = ship.NewOrientation;
+                if (checkCollisions(ship))
+                {
+                    ship.IsAlive = false;  /// ???
+                    //shipLosts.add(ship);
+                }
+            }
+        }
+
+        /************/
+        private List<Ship> ships = new List<Ship>();
+        private List<Barrel> barrels = new List<Barrel>();
+        private List<Mine> mines = new List<Mine>();
+        private List<Cannonball> cannonballs = new List<Cannonball>();
 
         private static void Main(string[] args)
         {
@@ -684,7 +1103,7 @@ namespace CodersOfTheCari
                         //Console.Error.WriteLine("CUR: {2} DEST {1} PATH {0}", string.Join(",", path), barrel, ship);
                         //if (path.Count > 0)
                         //{
-                        int Direction = ship.Direction;
+                        int Direction = ship.Orientation;
                         var targetAngle = nextPos.Angle(barrel);
                         var angleStraight = Math.Min(Math.Abs(Direction - targetAngle), 6 - Math.Abs(Direction - targetAngle));
                         var anglePort = Math.Min(Math.Abs((Direction + 1) - targetAngle), Math.Abs((Direction - 5) - targetAngle));
@@ -710,7 +1129,7 @@ namespace CodersOfTheCari
                         }
                         else if (dir == "STARBOARD")
                         {
-                            var n = ship.Neighbor((ship.Direction + 5) % 6);
+                            var n = ship.Neighbor((ship.Orientation + 5) % 6);
                             if (_entities.OfType<Mine>().Any(m => m.Equals(n)))//|| m.Equals(ship.GetNextBow()) || m.Equals(ship.GetNextStern())))
                                 Console.WriteLine("MINE DODGING!");
                             else
@@ -718,7 +1137,7 @@ namespace CodersOfTheCari
                         }
                         else if (dir == "PORT")
                         {
-                            var n = ship.Neighbor((ship.Direction + 1) % 6);
+                            var n = ship.Neighbor((ship.Orientation + 1) % 6);
                             if (_entities.OfType<Mine>().Any(m => m.Equals(n)))//|| m.Equals(ship.GetNextBow()) || m.Equals(ship.GetNextStern())))
                                 Console.WriteLine("MINE DODGING!");
                             else
