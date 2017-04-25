@@ -35,403 +35,10 @@ namespace CodersOfTheCari
         private const int CannonCooldown = 1;
         private const int MaxSpeed = 2;
 
-        private static List<Referee.Entity> _entities = new List<Referee.Entity>();
+        private static List<Entity> _entities = new List<Entity>();
         private static int _round = -1;
 
-        //public Dictionary<Entity, Entity> GetPossiblePath(Entity target)
-        //{
-        //    var openSet = new Queue<Entity>();
-        //    openSet.Enqueue(this);
 
-        // var closed = new List<Entity>(); var path = new Dictionary<Entity, Entity>(); path[this] = null;
-
-        // while (openSet.Count > 0) { var current = openSet.Dequeue();
-
-        // if (current == target) break;
-
-        // var neighbors = current is Ship ? ((Ship)current).Neighbors() : current.Neighbors();
-        // foreach (var next in neighbors) { if (path.ContainsKey(next) || next is Mine || next is
-        // Ship) continue;
-
-        // openSet.Enqueue(next); path[next] = current; } }
-
-        //    //Console.Error.WriteLine("PATH FULL {0}", string.Join(",", path));
-        //    return path;
-        //}
-
-        //public List<Point> FindBestPath(Entity target)
-        //{
-        //    var fullPath = GetPossiblePath(target);
-        //    var bestPath = new List<Point>();
-        //    var current = target;
-        //    bestPath.Add(target);
-        //    while (current != this)
-        //    {
-        //        current = fullPath[current];
-        //        bestPath.Add(current);
-        //    }
-        //    bestPath.Reverse();
-        //    bestPath.Remove(this);
-
-        //    return bestPath;
-        //}
-
-        /// <summary>
-        /// GA
-        /// </summary>
-
-        public static int generations = 0;
-
-        public class Population
-        {
-            private float mutationRate = 1.0f;
-            private int popSize = 0;
-            public Referee.Ship[] Pop { get; set; }
-
-            public Population(float mutationRate, int populationSize, Referee.Ship[] ships)
-            {
-                this.mutationRate = mutationRate;
-                Pop = new Referee.Ship[populationSize];
-                for (int i = 0; i < populationSize; i++)
-                {
-                    Pop = ships;
-                    var d = new Referee.DNA();
-                    Pop[i].Dna = d;
-                    Pop[i].Targets = d.Targets;
-                }
-                popSize = populationSize;
-            }
-
-            internal double Fitness()
-            {
-                double fitness = 0;
-                var myRum = Referee.players[0].shipsAlive.Sum(s => s.health);
-                var enemyRum = Referee.players[1].shipsAlive.Sum(s => s.health);
-                fitness = myRum - enemyRum;
-
-                var distance = _entities.Sum(e => e.position.distanceTo(Referee.players[0].shipsAlive[0].position));
-                fitness -= distance;
-                //Console.Error.WriteLine("FITNESS: {0} {1} {2}", fitness, myRum, enemyRum);
-                return fitness;
-            }
-
-            public double Live(Referee.DNA[] dna)
-            {
-                //for (int index = 0; index < PopulationSize; index++)
-                //{
-                //Pop[index].Run();
-                for (int i = 0; i < Lifetime; i++)
-                {
-                    for (int j = 0; j < popSize; j++)
-                    {
-                        Pop[j].ApplyMove(dna[j].Genes[i], dna[j].Targets[i]);
-                    }
-                    var enemies = Referee.players[0].ships.Where(s => s.IsAlive).ToList();
-                    var rum = _entities.OfType<Referee.Rum>().Where(b => b.IsAlive).ToList();
-                    foreach (var enemy in enemies)
-                    {
-                        var closestRum = rum.OrderBy(b => b.position.distanceTo(enemy.position)).FirstOrDefault();
-                        if (closestRum != null) enemy.moveTo(closestRum.position.x, closestRum.position.y);
-                    }
-                    referee.updateGame(_round);
-                }
-                if (_round > 0) generations++;
-                var fitness = Fitness();
-                _entities.ForEach(e => e.Load());
-
-                return fitness;
-                //}
-            }
-
-            //public void Reproduction()
-            //{
-            //    //_entities.ForEach(e => e.Load());
-            //    for (int i = 0; i < PopulationSize; i++)
-            //    {
-            //        int m = _rand.Next(MatingPool.Count);
-            //        int f = _rand.Next(MatingPool.Count);
-
-            // var mom = MatingPool[m]; var dad = MatingPool[f];
-
-            // var momGenes = mom.DNA; var dadGenes = dad.DNA;
-
-            // var child = momGenes.Crossover(dadGenes); child.Mutate(mutationRate);
-
-            //        Pop[i] = mom.Clone(child);
-            //    }
-            //    generations++;
-            //}
-        }
-
-        private static Stopwatch stopwatch;
-        private static Referee referee = new Referee();
-
-        private static void Main(string[] args)
-        {
-            var me = new Referee.Player(1);
-            var enemyPlayer = new Referee.Player(0);
-            Referee.players.Add(me);
-            Referee.players.Add(enemyPlayer);
-            Population pop = null;
-            var maxFitness = double.MinValue;//pop.Live(new DNA(pop.Pop[0].Moves, pop.Pop[0].Targets));
-
-            // game loop
-            while (true)
-            {
-                _round++;
-                _entities.Clear();
-                me.shipsAlive.Clear();
-                enemyPlayer.shipsAlive.Clear();
-
-                int myShipCount = int.Parse(Console.ReadLine()); // the number of remaining ships
-                int entityCount = int.Parse(Console.ReadLine()); // the number of entities (e.g. ships, mines or cannonballs)
-                for (int i = 0; i < entityCount; i++)
-                {
-                    string[] inputs = Console.ReadLine().Split(' ');
-                    int entityId = int.Parse(inputs[0]);
-                    string entityType = inputs[1];
-                    int x = int.Parse(inputs[2]);
-                    int y = int.Parse(inputs[3]);
-                    int arg1 = int.Parse(inputs[4]);
-                    int arg2 = int.Parse(inputs[5]);
-                    int arg3 = int.Parse(inputs[6]);
-                    int arg4 = int.Parse(inputs[7]);
-                    Referee.Entity ent = null;
-                    switch (entityType)
-                    {
-                        case "SHIP":
-                            Referee.Ship ship;
-                            if (_round == 0)
-                            {
-                                ship = new Referee.Ship(x, y, arg1, arg4);
-                                ship.id = entityId;
-                                if (arg4 == 1)
-                                {
-                                    me.ships.Add(ship);
-                                    me.shipsAlive.Add(ship);
-                                }
-                                else
-                                {
-                                    enemyPlayer.ships.Add(ship);
-                                    enemyPlayer.shipsAlive.Add(ship);
-                                }
-                                Referee.ships.Add(ship);
-                            }
-                            else
-                            {
-                                if (arg4 == 1)
-                                {
-                                    ship = me.ships.FirstOrDefault(s => s.id == entityId);
-                                    me.shipsAlive.Add(ship);
-                                }
-                                else
-                                {
-                                    ship = enemyPlayer.ships.FirstOrDefault(s => s.id == entityId);
-                                    enemyPlayer.shipsAlive.Add(ship);
-                                }
-                                ship.position.x = x;
-                                ship.position.y = y;
-                                ship.orientation = arg1;
-                                ship.health = arg3;
-                            }
-                            ent = ship;
-                            break;
-
-                        case "BARREL":
-                            ent = new Referee.Rum(x, y, arg1);
-                            Referee.barrels.Add((Referee.Rum)ent);
-                            break;
-
-                        case "CANNONBALL":
-                            var source = me.ships.Concat(enemyPlayer.ships).FirstOrDefault(s => s.id == arg1);
-                            ent = new Referee.Cannonball(x, y, entityId, source.position.x, source.position.y, arg2);
-                            Referee.cannonballs.Add((Referee.Cannonball)ent);
-                            break;
-
-                        case "MINE":
-                            ent = new Referee.Mine(x, y);
-                            Referee.mines.Add((Referee.Mine)ent);
-                            break;
-                    }
-                    _entities.Add(ent);
-                }
-
-                foreach (var ship in me.ships.Where(s => !me.shipsAlive.Contains(s)))
-                {
-                    me.shipsAlive.Remove(ship);
-                }
-                foreach (var ship in enemyPlayer.ships.Where(s => !enemyPlayer.shipsAlive.Contains(s)))
-                {
-                    enemyPlayer.shipsAlive.Remove(ship);
-                }
-                _entities.ForEach(e => e.Save());
-
-                Console.Error.WriteLine("Ents {0}", string.Join(",", Referee.ships));
-                int timeLimit = _round == 0 ? 900 : 40;
-                stopwatch = Stopwatch.StartNew();
-
-                if (_round == 0)
-                {
-                    pop = new Population(1.0f, myShipCount, me.shipsAlive.ToArray());
-                }
-                else
-                {
-                    for (int i = 0; i < myShipCount; i++)
-                    {
-                        pop.Pop[i].Dna.Shift();
-                    }
-                    maxFitness = pop.Live(pop.Pop.Select(p => p.Dna).ToArray());
-                }
-
-                var children = new Referee.DNA[myShipCount];
-                while (stopwatch.ElapsedMilliseconds < timeLimit)
-                {
-                    for (int i = 0; i < myShipCount; i++)
-                    {
-                        children[i] = new Referee.DNA(pop.Pop[i].Dna.Genes, pop.Pop[i].Targets);
-                        children[i].Mutate(0.1f);
-                    }
-
-                    var fit = pop.Live(children);
-                    if (fit > maxFitness)
-                    {
-                        Console.Error.WriteLine("FITNESS: O:{0} N:{1}", maxFitness, fit);
-                        maxFitness = fit;
-                        for (int i = 0; i < myShipCount; i++)
-                        {
-                            pop.Pop[i].Dna = children[i];
-                            pop.Pop[i].Targets = children[i].Targets;
-                        }
-                    }
-                }
-
-                if (_round > 0) Console.Error.WriteLine("AVG: {0}", generations / _round);
-                for (int i = 0; i < myShipCount; i++)
-                {
-                    switch (pop.Pop[i].Dna.Genes[0])
-                    {
-                        case Referee.Action.FASTER:
-                            Console.WriteLine("FASTER");
-                            break;
-
-                        case Referee.Action.SLOWER:
-                            Console.WriteLine("SLOWER");
-                            break;
-
-                        case Referee.Action.PORT:
-                            Console.WriteLine("PORT");
-                            break;
-
-                        case Referee.Action.STARBOARD:
-                            Console.WriteLine("STARBOARD");
-                            break;
-
-                        case Referee.Action.MINE:
-                            Console.WriteLine("MINE");
-                            break;
-
-                        case Referee.Action.FIRE:
-                            Console.WriteLine("FIRE {0} {1}", pop.Pop[i].Targets[i].x, pop.Pop[i].Targets[i].y);
-                            break;
-
-                        default:
-                            Console.WriteLine("WAIT");
-                            break;
-                    }
-                }
-                //continue;
-                //var moves = new List<Entity>();
-                //foreach (var ship in myShip.Where(s => s.IsAlive))
-                //{
-                //    var closestRum = _entities.OfType<Barrel>().Where(b => !moves.Contains(b)).OrderBy(b => b.Distance(ship));
-                //    var enemy = enemyShip.Where(s => s.IsAlive).OrderBy(s => ship.Distance(s)).FirstOrDefault();
-                //    var enemyDistance = enemy.Distance(ship.GetNextBow());
-                //    var barrel = closestRum.FirstOrDefault();
-                //    var nextPos = ship.GetNextPosition();
-                //    var closestCannon = _entities.OfType<Cannonball>().OrderBy(c => c.Distance(ship)).FirstOrDefault();
-
-                // if ((ship.Speed > 0 || barrel == null || enemyDistance < 2) && enemyDistance < 6
-                // && ship.CannonCooldown <= 0) { var newPos = ship.PredictedLocation(enemy); //new
-                // Point(enemy.X + delta.X * eta, enemy.Y + delta.Y * eta); Console.WriteLine("FIRE
-                // {0} {1}", newPos.X, newPos.Y); ship.CannonCooldown = CannonCooldown; } else if
-                // (closestCannon != null && closestCannon.Distance(ship) < 2) {
-                // Console.WriteLine("FASTER"); } else if (enemyDistance > CannonRange * 0.5) { //var
-                // path = ship.FindBestPath(enemy); //if (path.Count > 0) // Console.WriteLine("MOVE
-                // {0} {1}", path[0].X, path[0].Y); //elseif ( Console.Error.WriteLine("Chasing enemy
-                // {0}", enemy.Id); if (_entities.OfType<Mine>().Any(m => m.Equals(nextPos) ||
-                // m.Equals(ship.GetNextBow()) || m.Equals(ship.GetNextStern()) || m.Equals(ship) ||
-                // m.Equals(ship.Bow()) || m.Equals(ship.Stern()))) Console.WriteLine("STARBOARD");
-                // else Console.WriteLine("MOVE {0} {1}", enemy.X, enemy.Y); } else if (barrel !=
-                // null) { moves.Add(barrel); //var path = ship.FindBestPath(barrel);
-                // //Console.Error.WriteLine("CUR: {2} DEST {1} PATH {0}", string.Join(",", path),
-                // barrel, ship); //if (path.Count > 0) //{ int Direction = ship.Orientation; var
-                // targetAngle = nextPos.Angle(barrel); var angleStraight =
-                // Math.Min(Math.Abs(Direction - targetAngle), 6 - Math.Abs(Direction -
-                // targetAngle)); var anglePort = Math.Min(Math.Abs((Direction + 1) - targetAngle),
-                // Math.Abs((Direction - 5) - targetAngle)); var angleStarboard =
-                // Math.Min(Math.Abs((Direction + 5) - targetAngle), Math.Abs((Direction - 1) - targetAngle));
-
-                // var centerAngle = nextPos.Angle(new Point(Width / 2, Height / 2)); var
-                // anglePortCenter = Math.Min(Math.Abs((Direction + 1) - centerAngle),
-                // Math.Abs((Direction - 5) - centerAngle)); var angleStarboardCenter =
-                // Math.Min(Math.Abs((Direction + 5) - centerAngle), Math.Abs((Direction - 1) - centerAngle));
-
-                //        if (nextPos.Distance(barrel) == 1 && angleStraight > 1.5)
-                //        {
-                //            Console.WriteLine("SLOWER");
-                //            continue;
-                //        }
-                //        var dir = ship.MoveTo(barrel.X, barrel.Y);
-                //        Console.Error.WriteLine(dir);
-                //        if (string.IsNullOrEmpty(dir))
-                //        {
-                //            if (_entities.OfType<Mine>().Any(m => m.Equals(nextPos) || m.Equals(ship.GetNextBow()) || m.Equals(ship.GetNextStern())))
-                //                Console.WriteLine("STARBOARD DODGING!");
-                //            else
-                //                Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
-                //        }
-                //        else if (dir == "STARBOARD")
-                //        {
-                //            var n = ship.Neighbor((ship.Orientation + 5) % 6);
-                //            if (_entities.OfType<Mine>().Any(m => m.Equals(n)))//|| m.Equals(ship.GetNextBow()) || m.Equals(ship.GetNextStern())))
-                //                Console.WriteLine("MINE DODGING!");
-                //            else
-                //                Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
-                //        }
-                //        else if (dir == "PORT")
-                //        {
-                //            var n = ship.Neighbor((ship.Orientation + 1) % 6);
-                //            if (_entities.OfType<Mine>().Any(m => m.Equals(n)))//|| m.Equals(ship.GetNextBow()) || m.Equals(ship.GetNextStern())))
-                //                Console.WriteLine("MINE DODGING!");
-                //            else
-                //                Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
-                //        }
-                //        else
-                //            Console.WriteLine("MOVE {0} {1}", barrel.X, barrel.Y);
-                //        //    else
-                //        //    {
-                //        //        Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
-                //        //    }
-                //        //}
-                //        //else
-                //        Console.Error.WriteLine("Chasing barrel {0}", barrel.Id);
-                //    }
-                //    else
-                //    {
-                //        //var path = ship.FindBestPath(new Entity(-1, _rand.Next(Width - 1), _rand.Next(Height - 1)));
-                //        //if (path.Count > 0)
-                //        //    Console.WriteLine("MOVE {0} {1}", path[0].X, path[0].Y);
-                //        //else
-                //        Console.WriteLine("MOVE {0} {1}", _rand.Next(Width - 1), _rand.Next(Height - 1));
-                //    }
-                //    //Console.WriteLine("WAIT"); // Any valid action, such as "WAIT" or "MOVE x y"
-                //}
-            }
-        }
-    }
-
-    internal class Referee
-    {
         public const int MAP_WIDTH = 23;
         public const int MAP_HEIGHT = 21;
         public const int COOLDOWN_CANNON = 2;
@@ -460,16 +67,7 @@ namespace CodersOfTheCari
             return Math.Max(min, Math.Min(max, val));
         }
 
-        public Referee()
-        {
-            players = new List<Player>();
-            ships = new List<Ship>();
-            mines = new List<Mine>();
-            barrels = new List<Rum>();
-            cannonballs = new List<Cannonball>();
-            damage = new List<Damage>();
-            cannonBallExplosions = new List<Coord>();
-        }
+
 
         public class Coord
         {
@@ -531,6 +129,15 @@ namespace CodersOfTheCari
                 return new Coord(newX, newY);
             }
 
+            public virtual Coord[] neighbors()
+            {
+                var n = new Coord[6];
+                for (int i = 0; i < 6; i++)
+                {
+                    n[i] = neighbor(i);
+                }
+                return n;
+            }
             public bool isInsideMap()
             {
                 return x >= 0 && x < MAP_WIDTH && y >= 0 && y < MAP_HEIGHT;
@@ -598,7 +205,8 @@ namespace CodersOfTheCari
 
         public enum EntityType
         {
-            SHIP, BARREL, MINE, CANNONBALL
+            SHIP, BARREL, MINE, CANNONBALL,
+            EMPTY
         }
 
         public class Entity
@@ -628,7 +236,7 @@ namespace CodersOfTheCari
                 this.position = new Coord(x, y);
             }
 
-            public virtual string toViewstring()
+            public override string ToString()
             {
                 return string.Format("{0} {1} {2}", id, position.y, position.x);
             }
@@ -650,6 +258,23 @@ namespace CodersOfTheCari
             {
                 position = (Coord)cache[0];
                 IsAlive = (bool)cache[1];
+            }
+
+            public List<Entity> neighbors()
+            {
+                var ns = new List<Entity>();
+                for (int i = 0; i < 6; i++)
+                {
+                    var neighbor = position.neighbor(i);
+                    var ent = _entities.FirstOrDefault(e => e.position.equals(neighbor));
+                    if (ent == null)
+                    {
+                        ent = new Entity(EntityType.EMPTY, neighbor.x, neighbor.y);
+                    }
+                    ns.Add(ent);
+                }
+
+                return ns;
             }
         }
 
@@ -743,7 +368,7 @@ namespace CodersOfTheCari
                 this.initialRemainingTurns = this.remainingTurns = remainingTurns;
             }
 
-            public override string toViewstring()
+            public override string ToString()
             {
                 return string.Format("{0} {1} {2} {3} {4} {5} {6} {7}", id, position.y, position.x, srcY, srcX, initialRemainingTurns, remainingTurns, ownerEntityId);
             }
@@ -779,7 +404,7 @@ namespace CodersOfTheCari
                 this.health = health;
             }
 
-            public override string toViewstring()
+            public override string ToString()
             {
                 return string.Format("{0} {1} {2} {3}", id, position.y, position.x, health);
             }
@@ -867,6 +492,8 @@ namespace CodersOfTheCari
                 this.target = target;
             }
 
+
+
             private int[] cache = new int[4];
 
             public override void Save()
@@ -899,10 +526,11 @@ namespace CodersOfTheCari
                 return ship;
             }
 
-            public override string toViewstring()
+            public override string ToString()
             {
-                return string.Format("{0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}", id, position.y, position.x, orientation, health, speed, action, bow().y, bow().x, stern().y,
-                        stern().x, " ;" + (message != null ? message : ""));
+                return string.Format("{0} {1} {2}", id, position.y, position.x);
+                //return string.Format("{0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10} {11}", id, position.y, position.x, orientation, health, speed, action, bow().y, bow().x, stern().y,
+                //        stern().x, " ;" + (message != null ? message : ""));
             }
 
             public string toPlayerstring(int playerIdx)
@@ -935,7 +563,7 @@ namespace CodersOfTheCari
                         }
 
                         // Target reached at next turn
-                        if (currentPosition.equals(targetPosition))
+                        if (at(targetPosition))
                         {
                             this.action = Action.WAIT;
                             break;
@@ -948,15 +576,15 @@ namespace CodersOfTheCari
                         angleStarboard = Math.Min(Math.Abs((orientation + 5) - targetAngle), Math.Abs((orientation - 1) - targetAngle));
 
                         centerAngle = currentPosition.angle(new Coord(MAP_WIDTH / 2, MAP_HEIGHT / 2));
-                        anglePortCenter = Math.Min(Math.Abs((orientation + 1) - centerAngle),
-                        Math.Abs((orientation - 5) - centerAngle));
+                        anglePortCenter = Math.Min(Math.Abs((orientation + 1) - centerAngle), Math.Abs((orientation - 5) - centerAngle));
                         angleStarboardCenter = Math.Min(Math.Abs((orientation + 5) - centerAngle), Math.Abs((orientation - 1) - centerAngle));
 
                         // Next to target with bad angle, slow down then rotate (avoid to turn around
                         // the target!)
                         if (currentPosition.distanceTo(targetPosition) == 1 && angleStraight > 1.5)
                         {
-                            this.action = Action.SLOWER; break;
+                            this.action = Action.SLOWER;
+                            break;
                         }
 
                         int? distanceMin = null;
@@ -976,7 +604,8 @@ namespace CodersOfTheCari
                             int distance = nextPosition.distanceTo(targetPosition);
                             if (distanceMin == null || distance < distanceMin || distance == distanceMin && anglePort < angleStraight - 0.5)
                             {
-                                distanceMin = distance; this.action = Action.PORT;
+                                distanceMin = distance;
+                                this.action = Action.PORT;
                             }
                         }
 
@@ -985,18 +614,17 @@ namespace CodersOfTheCari
                         if (nextPosition.isInsideMap())
                         {
                             int distance = nextPosition.distanceTo(targetPosition);
-                            if (distanceMin == null || distance < distanceMin || (distance == distanceMin &&
-                            angleStarboard < anglePort - 0.5 && this.action == Action.PORT) || (distance ==
-                            distanceMin && angleStarboard < angleStraight - 0.5 && this.action == Action.WAIT) ||
-                            (distance == distanceMin && this.action == Action.PORT && angleStarboard == anglePort
-                            && angleStarboardCenter < anglePortCenter) || (distance == distanceMin && this.action
-                            == Action.PORT && angleStarboard == anglePort && angleStarboardCenter ==
-                            anglePortCenter && (orientation == 1 || orientation == 4)))
+                            if (distanceMin == null || distance < distanceMin || (distance == distanceMin && angleStarboard < anglePort - 0.5 && this.action == Action.PORT) ||
+                                (distance == distanceMin && angleStarboard < angleStraight - 0.5 && this.action == Action.WAIT) ||
+                                (distance == distanceMin && this.action == Action.PORT && angleStarboard == anglePort && angleStarboardCenter < anglePortCenter) ||
+                                (distance == distanceMin && this.action == Action.PORT && angleStarboard == anglePort && angleStarboardCenter == anglePortCenter &&
+                                (orientation == 1 || orientation == 4)))
                             {
                                 distanceMin = distance;
                                 this.action = Action.STARBOARD;
                             }
-                        } break;
+                        }
+                        break;
 
                     case 0: // Rotate ship towards target
                         targetAngle = currentPosition.angle(targetPosition);
@@ -1015,9 +643,8 @@ namespace CodersOfTheCari
 
                         if (anglePort <= angleStarboard) { this.action = Action.PORT; }
 
-                        if (angleStarboard < anglePort || angleStarboard == anglePort && angleStarboardCenter
-                        < anglePortCenter || angleStarboard == anglePort && angleStarboardCenter ==
-                        anglePortCenter && (orientation == 1 || orientation == 4))
+                        if (angleStarboard < anglePort || angleStarboard == anglePort && angleStarboardCenter < anglePortCenter ||
+                            angleStarboard == anglePort && angleStarboardCenter == anglePortCenter && (orientation == 1 || orientation == 4))
                         {
                             this.action = Action.STARBOARD;
                         }
@@ -1147,15 +774,49 @@ namespace CodersOfTheCari
                 this.target = target;
                 this.action = Action.FIRE;
             }
+
+            public void PrintAction()
+            {
+                switch (this.action)
+                {
+                    case Action.FASTER:
+                        Console.WriteLine("FASTER");
+                        break;
+
+                    case Action.SLOWER:
+                        Console.WriteLine("SLOWER");
+                        break;
+
+                    case Action.PORT:
+                        Console.WriteLine("PORT");
+                        break;
+
+                    case Action.STARBOARD:
+                        Console.WriteLine("STARBOARD");
+                        break;
+
+                    case Action.MINE:
+                        Console.WriteLine("MINE");
+                        break;
+
+                    case Action.FIRE:
+                        Console.WriteLine("FIRE {0} {1}", target.x, target.y);
+                        break;
+
+                    default:
+                        Console.WriteLine("WAIT");
+                        break;
+                }
+            }
         }
 
-        public class Player
+        public class Bot
         {
             public int id;
             public List<Ship> ships;
             public List<Ship> shipsAlive;
 
-            public Player(int id)
+            public Bot(int id)
             {
                 this.id = id;
                 this.ships = new List<Ship>();
@@ -1187,25 +848,25 @@ namespace CodersOfTheCari
                 data.Add(this.id.ToString());
                 foreach (Ship ship in ships)
                 {
-                    data.Add(ship.toViewstring());
+                    data.Add(ship.ToString());
                 }
 
                 return data;
             }
         }
 
-        public static List<Cannonball> cannonballs;
-        public static List<Mine> mines;
-        public static List<Rum> barrels;
-        public static List<Player> players;
-        public static List<Ship> ships;
-        public static List<Damage> damage;
-        public static List<Coord> cannonBallExplosions;
+        public static List<Cannonball> cannonballs = new List<Cannonball>();
+        public static List<Mine> mines = new List<Mine>();
+        public static List<Rum> barrels = new List<Rum>();
+        public static List<Bot> players = new List<Bot>();
+        public static List<Ship> ships = new List<Ship>();
+        public static List<Damage> damage = new List<Damage>();
+        public static List<Coord> cannonBallExplosions = new List<Coord>();
         public static int shipsPerPlayer;
         public static int mineCount;
         public static int barrelCount;
 
-        public void decrementRum()
+        public static void decrementRum()
         {
             foreach (Ship ship in ships)
             {
@@ -1213,7 +874,7 @@ namespace CodersOfTheCari
             }
         }
 
-        public void updateInitialRum()
+        public static void updateInitialRum()
         {
             foreach (Ship ship in ships)
             {
@@ -1221,7 +882,7 @@ namespace CodersOfTheCari
             }
         }
 
-        public void moveCannonballs()
+        public static void moveCannonballs()
         {
             cannonballs = cannonballs.Where(b => b.IsAlive).ToList();
 
@@ -1239,9 +900,9 @@ namespace CodersOfTheCari
             }
         }
 
-        public void applyActions()
+        public static void applyActions()
         {
-            foreach (Player player in players)
+            foreach (Bot player in players)
             {
                 foreach (Ship ship in player.shipsAlive)
                 {
@@ -1318,7 +979,7 @@ namespace CodersOfTheCari
             }
         }
 
-        public void checkCollisions(Ship ship)
+        public static void checkCollisions(Ship ship)
         {
             Coord bow = ship.bow();
             Coord stern = ship.stern();
@@ -1349,12 +1010,12 @@ namespace CodersOfTheCari
             }
         }
 
-        public void moveShips()
+        public static void moveShips()
         {
             // --- Go forward ---
             for (int i = 1; i <= MAX_SHIP_SPEED; i++)
             {
-                foreach (Player player in players)
+                foreach (Bot player in players)
                 {
                     foreach (Ship ship in player.shipsAlive)
                     {
@@ -1414,7 +1075,7 @@ namespace CodersOfTheCari
                     collisions.Clear();
                 }
 
-                foreach (Player player in players)
+                foreach (Bot player in players)
                 {
                     foreach (Ship ship in player.shipsAlive)
                     {
@@ -1425,10 +1086,10 @@ namespace CodersOfTheCari
             }
         }
 
-        public void rotateShips()
+        public static void rotateShips()
         {
             // Rotate
-            foreach (Player player in players)
+            foreach (Bot player in players)
             {
                 foreach (Ship ship in player.shipsAlive)
                 {
@@ -1466,7 +1127,7 @@ namespace CodersOfTheCari
             }
 
             // Apply rotation
-            foreach (Player player in players)
+            foreach (Bot player in players)
             {
                 foreach (Ship ship in player.shipsAlive)
                 {
@@ -1478,7 +1139,7 @@ namespace CodersOfTheCari
 
         public bool gameIsOver()
         {
-            foreach (Player player in players)
+            foreach (Bot player in players)
             {
                 if (player.shipsAlive.Count() == 0)
                 {
@@ -1488,7 +1149,7 @@ namespace CodersOfTheCari
             return barrels.Count() == 0;
         }
 
-        public void explodeShips()
+        public static void explodeShips()
         {
             List<Coord> removedPositions = new List<Coord>();
             bool hit = false;
@@ -1550,11 +1211,11 @@ namespace CodersOfTheCari
             }
         }
 
-        public bool updateGame(int round)
+        public static bool updateGame(int round)
         {
             moveCannonballs();
             decrementRum();
-            updateInitialRum();
+            //updateInitialRum();
 
             applyActions();
             moveShips();
@@ -1576,6 +1237,7 @@ namespace CodersOfTheCari
 
                     //players.First(a => a.id == ship.owner).shipsAlive.Remove(ship);
                     ship.IsAlive = false;
+                    Console.Error.WriteLine("SHIP DEAD {0}", ship.id);
                 }
             }
 
@@ -1587,42 +1249,23 @@ namespace CodersOfTheCari
             return false;
         }
 
-        public string[] getPlayerActions(int playerIdx, int round)
-        {
-            return new string[0];
-        }
 
-        public bool isPlayerDead(int playerIdx)
-        {
-            return false;
-        }
 
-        public string getDeathReason(int playerIdx)
-        {
-            return "$" + playerIdx + ": Eliminated!";
-        }
-
-        public int getScore(int playerIdx)
-        {
-            return players.First(a => a.id == playerIdx).getScore();
-        }
-
-        private const int Lifetime = 4;
 
         public class DNA
         {
             private const int ActionLength = 5;
-            public Referee.Action[] Genes { get; set; }
-            public Referee.Coord[] Targets { get; set; }
+            public Action[] Genes { get; set; }
+            public Coord[] Targets { get; set; }
 
             public DNA()
             {
-                Genes = new Referee.Action[Lifetime];
-                Targets = new Referee.Coord[Lifetime];
+                Genes = new Action[Lifetime];
+                Targets = new Coord[Lifetime];
                 Mutate(1.1f);
             }
 
-            public DNA(Referee.Action[] genes, Referee.Coord[] targets)
+            public DNA(Action[] genes, Coord[] targets)
             {
                 Genes = genes;
                 Targets = targets;
@@ -1630,7 +1273,7 @@ namespace CodersOfTheCari
 
             //public DNA Crossover(DNA partner)
             //{
-            //    var child = new Referee.Action[Lifetime];
+            //    var child = new Action[Lifetime];
             //    int crossoverPoint = _rand.Next(Lifetime);
             //    for (int i = 0; i < Lifetime; i++)
             //    {
@@ -1649,11 +1292,11 @@ namespace CodersOfTheCari
                 {
                     if (MyRandom.Next(1) < rate)
                     {
-                        var action = (Referee.Action)MyRandom.Next(ActionLength);
-                        if (action == Referee.Action.FIRE)
+                        var action = (Action)MyRandom.Next(ActionLength);
+                        if (action == Action.FIRE)
                         {
-                            action = Referee.Action.WAIT;
-                            //Targets[i] = new Referee.Coord(_rand.Next(Width), _rand.Next(Height));
+                            action = Action.WAIT;
+                            //Targets[i] = new Coord(_rand.Next(Width), _rand.Next(Height));
                         }
                         Genes[i] = action;
                     }
@@ -1690,5 +1333,295 @@ namespace CodersOfTheCari
                 return a + Next(b - a + 1);
             }
         }
+
+
+        public static Dictionary<Entity, Entity> GetPossiblePath(Entity source, Entity target)
+        {
+            var openSet = new Queue<Entity>();
+            openSet.Enqueue(source);
+
+            var closed = new List<Entity>();
+            var path = new Dictionary<Entity, Entity>
+            {
+                [source] = null
+            };
+            while (openSet.Count > 0)
+            {
+                var current = openSet.Dequeue();
+
+                if (current == target) break;
+
+                closed.Add(current);
+
+                var neighbors = current.neighbors();
+                foreach (var next in neighbors)
+                {
+                    if (path.ContainsKey(next) || next is Mine || next is Ship) continue;
+
+                    openSet.Enqueue(next);
+                    path[next] = current;
+                }
+            }
+
+            Console.Error.WriteLine("PATH FULL {0}", string.Join(",", path));
+            return path;
+        }
+
+        public static List<Coord> FindBestPath(Entity source, Entity target)
+        {
+            Console.Error.WriteLine("S: {0}, T: {1}", source, target);
+            var fullPath = GetPossiblePath(source, target);
+            var bestPath = new List<Coord>();
+            var current = target;
+            bestPath.Add(target.position);
+            int max = 5;
+            while (current != source && max > 0)
+            {
+                current = fullPath[current];
+                bestPath.Add(current.position);
+                max--;
+            }
+            Console.Error.WriteLine("BEST {0}", string.Join(",", bestPath));
+            bestPath.Reverse();
+            bestPath.Remove(source.position);
+
+            return bestPath;
+        }
+
+        /// <summary>
+        /// GA
+        /// </summary>
+
+        public static int generations = 0;
+
+        public class Population
+        {
+            private float mutationRate = 1.0f;
+            private int popSize = 0;
+            public Ship[] Pop { get; set; }
+
+            public Population(float mutationRate, int populationSize, Ship[] ships)
+            {
+                this.mutationRate = mutationRate;
+                Pop = new Ship[populationSize];
+                for (int i = 0; i < populationSize; i++)
+                {
+                    Pop = ships;
+                    var d = new DNA();
+                    Pop[i].Dna = d;
+                    Pop[i].Targets = d.Targets;
+                }
+                popSize = populationSize;
+            }
+
+            internal double Fitness()
+            {
+                double fitness = 0;
+                var myRum = players[0].shipsAlive.Sum(s => s.health);
+                var enemyRum = players[1].shipsAlive.Sum(s => s.health);
+                fitness = myRum - enemyRum;
+
+                var distance = _entities.Sum(e => e.position.distanceTo(players[0].shipsAlive[0].position));
+                fitness -= distance;
+
+                var edgePenalty = players[0].shipsAlive.Any(s => s.position.x < 2 || s.position.x > Width - 2 || s.position.y < 2 || s.position.y > Height - 2);
+                if (edgePenalty)
+                    fitness -= 1000;
+                //Console.Error.WriteLine("FITNESS: {0} {1} {2}", fitness, myRum, enemyRum);
+                return fitness;
+            }
+
+            public double Live(DNA[] dna)
+            {
+                //for (int index = 0; index < PopulationSize; index++)
+                //{
+                //Pop[index].Run();
+                for (int i = 0; i < Lifetime; i++)
+                {
+                    for (int j = 0; j < dna.Length; j++)
+                    {
+                        Pop[j].ApplyMove(dna[j].Genes[i], dna[j].Targets[i]);
+                    }
+                    var enemies = players[0].ships.Where(s => s.IsAlive).ToList();
+                    var rum = _entities.OfType<Rum>().Where(b => b.IsAlive).ToList();
+                    foreach (var enemy in enemies)
+                    {
+                        var closestRum = rum.OrderBy(b => b.position.distanceTo(enemy.position)).FirstOrDefault();
+                        if (closestRum != null) enemy.moveTo(closestRum.position.x, closestRum.position.y);
+                    }
+                    updateGame(_round);
+                }
+                if (_round > 0) generations++;
+                var fitness = Fitness();
+                _entities.ForEach(e => e.Load());
+
+                return fitness;
+                //}
+            }
+        }
+
+        private static Stopwatch stopwatch;
+
+        private static void Main(string[] args)
+        {
+            players = new List<Bot>();
+            var me = new Bot(1);
+            var enemyPlayer = new Bot(0);
+            players.Add(me);
+            players.Add(enemyPlayer);
+            Population pop = null;
+            var maxFitness = double.MinValue;//pop.Live(new DNA(pop.Pop[0].Moves, pop.Pop[0].Targets));
+
+            // game loop
+            while (true)
+            {
+                _round++;
+                _entities.Clear();
+                me.shipsAlive.Clear();
+                enemyPlayer.shipsAlive.Clear();
+                barrels.Clear();
+                mines.Clear();
+                cannonballs.Clear();
+
+                int myShipCount = int.Parse(Console.ReadLine()); // the number of remaining ships
+                int entityCount = int.Parse(Console.ReadLine()); // the number of entities (e.g. ships, mines or cannonballs)
+                for (int i = 0; i < entityCount; i++)
+                {
+                    string[] inputs = Console.ReadLine().Split(' ');
+                    int entityId = int.Parse(inputs[0]);
+                    string entityType = inputs[1];
+                    int x = int.Parse(inputs[2]);
+                    int y = int.Parse(inputs[3]);
+                    int arg1 = int.Parse(inputs[4]);
+                    int arg2 = int.Parse(inputs[5]);
+                    int arg3 = int.Parse(inputs[6]);
+                    int arg4 = int.Parse(inputs[7]);
+                    Entity ent = null;
+                    switch (entityType)
+                    {
+                        case "SHIP":
+                            Ship ship;
+                            if (_round == 0)
+                            {
+                                ship = new Ship(x, y, arg1, arg4);
+                                ship.id = entityId;
+                                if (arg4 == 1)
+                                {
+                                    me.ships.Add(ship);
+                                    me.shipsAlive.Add(ship);
+                                }
+                                else
+                                {
+                                    enemyPlayer.ships.Add(ship);
+                                    enemyPlayer.shipsAlive.Add(ship);
+                                }
+                                ships.Add(ship);
+                            }
+                            else
+                            {
+                                if (arg4 == 1)
+                                {
+                                    ship = me.ships.FirstOrDefault(s => s.id == entityId);
+                                    me.shipsAlive.Add(ship);
+                                }
+                                else
+                                {
+                                    ship = enemyPlayer.ships.FirstOrDefault(s => s.id == entityId);
+                                    enemyPlayer.shipsAlive.Add(ship);
+                                }
+                                ship.position.x = x;
+                                ship.position.y = y;
+                                ship.orientation = arg1;
+                                ship.health = arg3;
+                            }
+                            ent = ship;
+                            if (ship.cannonCooldown > 0) ship.cannonCooldown--;
+                            if (ship.mineCooldown > 0) ship.mineCooldown--;
+                            break;
+
+                        case "BARREL":
+                            ent = new Rum(x, y, arg1);
+                            barrels.Add((Rum)ent);
+                            break;
+
+                        case "CANNONBALL":
+                            var source = me.ships.Concat(enemyPlayer.ships).FirstOrDefault(s => s.id == arg1);
+                            ent = new Cannonball(x, y, entityId, source.position.x, source.position.y, arg2);
+                            cannonballs.Add((Cannonball)ent);
+                            break;
+
+                        case "MINE":
+                            ent = new Mine(x, y);
+                            mines.Add((Mine)ent);
+                            break;
+                    }
+                    _entities.Add(ent);
+                }
+
+                foreach (var ship in me.ships.Where(s => !me.shipsAlive.Contains(s)))
+                {
+                    me.shipsAlive.Remove(ship);
+                }
+                foreach (var ship in enemyPlayer.ships.Where(s => !enemyPlayer.shipsAlive.Contains(s)))
+                {
+                    enemyPlayer.shipsAlive.Remove(ship);
+                }
+                _entities.ForEach(e => e.Save());
+
+                int timeLimit = _round == 0 ? 900 : 40;
+                stopwatch = Stopwatch.StartNew();
+
+                var moves = new List<Entity>();
+                foreach (var ship in me.shipsAlive)
+                {
+                    var closestRum = barrels.Where(b => !moves.Contains(b)).OrderBy(b => b.position.distanceTo(ship.position));
+                    var enemy = enemyPlayer.shipsAlive.OrderBy(s => Math.Min(ship.bow().distanceTo(s.position), ship.position.distanceTo(s.position))).FirstOrDefault();
+                    var enemyDistance = enemy.position.distanceTo(ship.newBow());
+                    var barrel = closestRum.FirstOrDefault();
+                    var nextPos = ship.newPosition;
+                    var closestCannon = _entities.OfType<Cannonball>().OrderBy(c => c.position.distanceTo(ship.position)).FirstOrDefault();
+                    var closestMine = mines.OrderBy(m => m.position.distanceTo(ship.position)).FirstOrDefault();
+                    var mineDistance = closestMine != null ? closestMine.position.distanceTo(ship.position) : int.MaxValue;
+
+                    Console.Error.WriteLine("ENEMY DISTANCE {0}\nMINE DISTANCE {1}", enemyDistance, mineDistance);
+                    if ((ship.speed > 0 || enemyDistance <= 1) && enemyDistance < 5 && ship.cannonCooldown > 0)
+                    {
+                        var eta = 1 + (enemyDistance / 3);
+                        Coord enemyPos = enemy.position;
+                        if (eta > 0)
+                        {
+                            enemyPos = enemy.newBow();
+                        }
+                        ship.fire(enemyPos.x, enemyPos.y);
+                        ship.cannonCooldown = CannonCooldown;
+                    }
+                    else if (ship.speed > 0 && mineDistance < 5)
+                    {
+                        var eta = 1 + (mineDistance / 3);
+                        ship.fire(closestMine.position.x, closestMine.position.y);
+                    }
+                    else if (barrel != null && ship.health < 90)
+                    {
+                        //var path = FindBestPath(ship, barrel);
+                        //Console.WriteLine("MOVE {0} {1}", path[0].x, path[0].y);
+                        ship.moveTo(barrel.position.x, barrel.position.y);
+
+                        moves.Add(barrel);
+                    }
+                    else if (ship.speed > 0 && enemyDistance < 6 && enemy.orientation == ship.orientation)
+                    {
+                        ship.placeMine();
+                    }
+                    else
+                    {
+                        ship.moveTo(MyRandom.Next(Width - 2), MyRandom.Next(Height - 2));
+                    }
+                    ship.PrintAction();
+                }
+            }
+        }
     }
+
+
+
 }

@@ -66,6 +66,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <None Include="PRACTICE\lastCrusade.swift" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="CHALLENGES\tron.py" />
