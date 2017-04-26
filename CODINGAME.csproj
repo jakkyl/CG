@@ -55,9 +55,11 @@
       <Link>ghostInTheCell.cs</Link>
     </Compile>
     <Compile Include="CHALLENGES\ghostInTheCell.cs" />
+    <Compile Include="HELPERS\FastRandom.cs" />
     <Compile Include="HELPERS\Point.cs" />
     <Compile Include="HELPERS\PriorityQueue.cs" />
     <Compile Include="PRACTICE\marsLander.cs" />
+    <None Include="PRACTICE\telephoneNumbers.class" />
     <Compile Include="solution.cs">
       <Link>solution.cs</Link>
     </Compile>
@@ -67,6 +69,7 @@
   <ItemGroup>
     <None Include="App.config" />
     <None Include="PRACTICE\lastCrusade.swift" />
+    <None Include="PRACTICE\networkCabling.swift" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="CHALLENGES\tron.py" />

@@ -8,10 +8,10 @@ using System.Collections.Generic;
 /**
  * Send your busters out into the fog to trap ghosts and bring them home!
  **/
+
 namespace CodeBuster
 {
-
-    class Player
+    internal class Player
     {
         private const int MapWidth = 16001;
         private const int MapHeight = 9001;
@@ -23,7 +23,7 @@ namespace CodeBuster
 
         private static MapState[,] graph = new MapState[MapWidth, MapHeight];
 
-        enum BusterState
+        private enum BusterState
         {
             Idle = 0,
             Carrying,
@@ -31,7 +31,7 @@ namespace CodeBuster
             Trapping
         }
 
-        enum MapState
+        private enum MapState
         {
             Unexplored,
             Empty,
@@ -40,14 +40,14 @@ namespace CodeBuster
             Base
         }
 
-        enum Job
+        private enum Job
         {
-        	Attack,
-        	Capture,
-        	Roam
+            Attack,
+            Capture,
+            Roam
         }
 
-        class Point
+        private class Point
         {
             public double X { get; set; }
             public double Y { get; set; }
@@ -69,7 +69,7 @@ namespace CodeBuster
             }
         }
 
-        class Entity : Point
+        private class Entity : Point
         {
             public int Id { get; set; }
             public int Value { get; set; }
@@ -92,18 +92,20 @@ namespace CodeBuster
             }
         }
 
-        class Ghost : Entity
+        private class Ghost : Entity
         {
-            public Ghost(int id, double x, double y, int type, int value, BusterState state) : base(id, x, y, type, value, state)
-            {}
+            public Ghost(int id, double x, double y, int type, int value, BusterState state)
+                : base(id, x, y, type, value, state)
+            { }
         }
 
-        class Buster : Entity
+        private class Buster : Entity
         {
             public Job Job { get; set; }
             public int StunTimer { get; set; }
 
-            public Buster(int id, int type, double x, double y, BusterState state, int value) : base(id, x, y, type, value, state)
+            public Buster(int id, int type, double x, double y, BusterState state, int value)
+                : base(id, x, y, type, value, state)
             {
                 StunTimer = 0;
             }
@@ -164,7 +166,7 @@ namespace CodeBuster
                 double destX = 0;
                 double destY = 0;
                 var nextTiles = tiles.Where(t => t.Value == (int)MapState.Unexplored || t.Value == (int)MapState.Ghost)
-                					 .OrderBy(t => t.Distance(this)).FirstOrDefault();
+                                     .OrderBy(t => t.Distance(this)).FirstOrDefault();
                 //Console.Error.WriteLine(string.Format("TILES: {0}", string.Join(";", nextTiles)));
 
                 if (nextTiles != null)
@@ -175,16 +177,16 @@ namespace CodeBuster
                 }
                 else
                 {
-                	if (Type == 0)
-            		{
-	                    destX = Math.Max(0, X - MoveLength);
-	                    destY = Math.Max(0, Y - MoveLength);
+                    if (Type == 0)
+                    {
+                        destX = Math.Max(0, X - MoveLength);
+                        destY = Math.Max(0, Y - MoveLength);
                     }
-	                else
-	                {
-                    	destX = Math.Min(MapWidth, X + MoveLength);
-                    	destY = Math.Min(MapHeight, Y + MoveLength);
-	                }
+                    else
+                    {
+                        destX = Math.Min(MapWidth, X + MoveLength);
+                        destY = Math.Min(MapHeight, Y + MoveLength);
+                    }
                 }
 
                 Console.WriteLine(string.Format("MOVE {0} {1}", destX, destY));
@@ -196,7 +198,7 @@ namespace CodeBuster
         private static List<Ghost> entitiesToRemove = new List<Ghost>();
         private static int myTeamId;
 
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             int bustersPerPlayer = int.Parse(Console.ReadLine()); // the amount of busters you control
             int ghostCount = int.Parse(Console.ReadLine()); // the amount of ghosts on the map
@@ -220,8 +222,8 @@ namespace CodeBuster
             // game loop
             while (true)
             {
-            	int myCount = 0;
-            	int enemyCount = 0;
+                int myCount = 0;
+                int enemyCount = 0;
                 //Console.Error.WriteLine(string.Format("TILES: {0}", string.Join(";",tiles.Select(t=> t.X+","+t.Y).ToArray())));
 
                 int entities = int.Parse(Console.ReadLine()); // the number of busters and ghosts visible to you
@@ -272,7 +274,7 @@ namespace CodeBuster
                             buster.Value = val;
                         }
 
-                        foreach(var tile in tiles.Where(t => t.Distance(buster) < t.Radius))
+                        foreach (var tile in tiles.Where(t => t.Distance(buster) < t.Radius))
                             tile.Value = (int)MapState.Buster;
                     }
                 }
@@ -286,10 +288,12 @@ namespace CodeBuster
                         case BusterState.Carrying:
                             buster.ReturnToBase();
                             break;
+
                         case BusterState.Idle:
                         case BusterState.Stunned:
                             buster.Search();
                             break;
+
                         case BusterState.Trapping:
                             Console.WriteLine("BUST " + buster.Value);
                             break;

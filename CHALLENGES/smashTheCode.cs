@@ -15,8 +15,8 @@ namespace SmashTheCode
 {
     internal class Player
     {
-        private const int Lifespan = 8;
-        private const int PopulationSize = 100;
+        private const int Lifespan = 4;
+        private const int PopulationSize = 2;
 
         private const int Width = 6;
         private const int Height = 12;
@@ -48,6 +48,27 @@ namespace SmashTheCode
             Pink,
             Red,
             Yellow = 5
+        }
+
+        private static int g_seed = 42;
+
+        internal class FastRandom
+        {
+            public static int fastrand()
+            {
+                g_seed = (214013 * g_seed + 2531011);
+                return (g_seed >> 16) & 0x7FFF;
+            }
+
+            public static int Rnd(int b)
+            {
+                return fastrand() % b;
+            }
+
+            public static int Rnd(int a, int b)
+            {
+                return a + Rnd(b - a + 1);
+            }
         }
 
         private class Point
@@ -113,10 +134,11 @@ namespace SmashTheCode
                 bool placedA = false;
                 bool placedB = false;
                 bool aFirst = pos2Y < 0;
+                bool bFirst = pos2Y > 0;
                 for (int i = Height - 1; i >= 0; i--)
                 {
                     if (i + pos2Y >= Height || i + pos2Y < 0) continue;
-                    if (!placedA && aFirst && Field[move.Column, i].Color == Color.Empty)
+                    if (!placedA && !bFirst && Field[move.Column, i].Color == Color.Empty)
                     {
                         Field[move.Column, i].Color = blocks.BlockA.Color;
                         aFirst = false;
@@ -126,7 +148,7 @@ namespace SmashTheCode
                     if (!placedB && !aFirst && Field[move.Column + pos2X, i + pos2Y].Color == Color.Empty)
                     {
                         Field[move.Column + pos2X, i + pos2Y].Color = blocks.BlockB.Color;
-                        aFirst = true;
+                        bFirst = false;
                         if (placedA) return true;
                         placedB = true;
                     }
@@ -150,12 +172,13 @@ namespace SmashTheCode
                             if (seen.Contains(start)) continue;
                             seen.Add(start);
                             //check if we've already got this one
-                            //if (blocks.Values.Any(b => b.Contains(start))) continue;
+                            if (blocks.Values.Any(b => b.Contains(start))) continue;
+
                             var found = Search(this, start);
                             if (found != null)
                             {
                                 seen.AddRange(found);
-                                //Console.Error.WriteLine("Starting search at {0}, found {1}", start.Position, string.Join(",", found));
+                                //Console.Error.WriteLine("Starting search at {0}, found {1}", start, string.Join(",", found));
                                 blocks[start] = found;
                             }
                         }
@@ -167,25 +190,26 @@ namespace SmashTheCode
                 return blocks;
             }
 
-            public void RemoveMatches(int step, bool debug = true)
+            public void RemoveMatches(int step, bool debug = false)
             {
-                //if (step > 0)
-                //{
-                //    var sb = new StringBuilder();
-                //    for (int k = 0; k < Height; k++)
-                //    {
-                //        for (int j = 0; j < Width; j++)
-                //        {
-                //            sb.Append(Field[j, k] + " ");
-                //        }
-
-                //        sb.AppendLine();
-                //    }
-                //    Console.Error.WriteLine("{0}\nActive: {1}", sb.ToString(), string.Join(",", ActiveBlocks));
-                //}
                 var matches = CheckMatches();
                 if (matches.Count > 0)
                 {
+                    //if (step > 0)
+                    //{
+                    //var sb = new StringBuilder();
+                    //for (int k = 0; k < Height; k++)
+                    //{
+                    //    for (int j = 0; j < Width; j++)
+                    //    {
+                    //        sb.Append(Field[j, k] + " ");
+                    //    }
+
+                    //    sb.AppendLine();
+                    //}
+                    //Console.Error.WriteLine("{0}\nActive: {1} {2}", sb.ToString(), string.Join(",", matches), string.Join(",", matches.Values));
+                    //}
+
                     int blocks = 0;
                     int groupBonus = 0;
                     var colorBonus = new Dictionary<Color, int>();
@@ -405,7 +429,6 @@ namespace SmashTheCode
             var openList = new Queue<Block>();
             openList.Enqueue(start);
 
-            var closedSet = new List<Block>() { start };
             var match = new List<Block>();
             match = new List<Block>() { start };
 
@@ -416,14 +439,13 @@ namespace SmashTheCode
                 foreach (var next in current.Neighbors(grid))
                 {
                     if (next.Color == Color.Empty || next.Color == Color.Skull) continue;
-                    if (closedSet.Contains(next)) continue;
+                    if (match.Contains(next)) continue;
                     if (next.Color == current.Color)
                     {
                         match.Add(next);
-                        //if (match[current.Color].Count >= 1)
-                        //    Console.Error.WriteLine("Got a color: {0} {1} {2}", next.Color, next.Position, match[current.Color].Count);
+                        //if (match.Count >= MinSmash)
+                        //    Console.Error.WriteLine("Got a color: {0} {1} {2}", next.Color, next.Position, match.Count);
                         openList.Enqueue(next);
-                        closedSet.Add(next);
                     }
                 }
             }
@@ -447,7 +469,7 @@ namespace SmashTheCode
 
             public void CalcFitness()
             {
-                for (int i = 0; i < Pop.Count(); i++)
+                for (int i = 0; i < PopulationSize; i++)
                 {
                     Pop[i].CalcFitness();
                 }
@@ -474,8 +496,8 @@ namespace SmashTheCode
                 {
                     for (int i = 0; i < PopulationSize; i++)
                     {
-                        var mom = Pop[rand.Next(PopulationSize)];
-                        var dad = Pop[rand.Next(PopulationSize)];
+                        var mom = Pop[FastRandom.Rnd(PopulationSize)];
+                        var dad = Pop[FastRandom.Rnd(PopulationSize)];
                         var child = mom.Crossover(dad);
                         child.Mutate();
                         child.CalcFitness();
@@ -505,7 +527,7 @@ namespace SmashTheCode
                     {
                         if (Pop[i].Fitness > best.Fitness)
                         {
-                            //Console.Error.WriteLine("B: {0} C: {1}", best.Fitness, Pop[i].Fitness);
+                            Console.Error.WriteLine("B: {0} C: {1}", best.Fitness, Pop[i].Fitness);
                             bestIndex = i;
                             maxFitness = Pop[i].Fitness;
                         }
@@ -557,17 +579,17 @@ namespace SmashTheCode
 
             public void Mutate()
             {
-                Mutate(rand.Next(Lifespan));
+                Mutate(FastRandom.Rnd(Lifespan));
             }
 
             public void Mutate(int index, bool all = false)
             {
-                int chance = rand.Next(1);
+                int chance = FastRandom.Rnd(1);
 
                 if (all || chance == 0)
-                    Genes[index].Column = rand.Next(Width - 1);
+                    Genes[index].Column = FastRandom.Rnd(Width - 1);
                 if (all || chance == 1)
-                    Genes[index].Rotation = rand.Next(3);
+                    Genes[index].Rotation = FastRandom.Rnd(3);
 
                 Fitness = int.MinValue;
             }
@@ -581,7 +603,7 @@ namespace SmashTheCode
                 Mutate(Lifespan - 1);
             }
 
-            public void Solve()
+            public void CalcFitness()
             {
                 if (Fitness == int.MinValue)
                 {
@@ -590,7 +612,7 @@ namespace SmashTheCode
                         int initScore = Grid.score;
                         if (!Grid.ApplyMove(Genes[i], _nextBlocks[i]))
                         {
-                            Grid.score = -10000;
+                            Grid.score = -1000;
                             break;
                         }
                         Grid.RemoveMatches(0);
@@ -605,12 +627,7 @@ namespace SmashTheCode
                     Grid.Load();
                     if (round > 0) _simulations++;
                 }
-                //Console.Error.WriteLine("S-NP:{0} GS {1}", Grid.NuisancePoints, Grid.score);
-            }
-
-            public void CalcFitness()
-            {
-                Solve();
+                Console.Error.WriteLine("S-NP:{0} GS {1}", Grid.NuisancePoints, Fitness);
             }
 
             public int CompareTo(DNA obj)
@@ -631,7 +648,7 @@ namespace SmashTheCode
             internal DNA Crossover(DNA partner)
             {
                 var genes = new Gene[Lifespan];
-                var mid = (int)rand.Next(Lifespan);
+                var mid = (int)FastRandom.Rnd(Lifespan);
                 for (int i = 0; i < Lifespan; i++)
                 {
                     if (i > mid)
