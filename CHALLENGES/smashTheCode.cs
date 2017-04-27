@@ -5,6 +5,7 @@ using System.Text;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 /**
  * Auto-generated code below aims at helping you parse
@@ -16,7 +17,7 @@ namespace SmashTheCode
     internal class Player
     {
         private const int Lifespan = 4;
-        private const int PopulationSize = 2;
+        private const int PopulationSize = 100;
 
         private const int Width = 6;
         private const int Height = 12;
@@ -94,13 +95,11 @@ namespace SmashTheCode
             public int score = 0;
 
             public Block[,] Field { get; set; }
-            public List<Block> ActiveBlocks { get; set; }
             public int NuisancePoints { get; set; }
 
             public Grid()
             {
                 Field = new Block[Width, Height];
-                ActiveBlocks = new List<Block>();
             }
 
             public bool ApplyMove(Gene move, BlockPair blocks)
@@ -221,11 +220,9 @@ namespace SmashTheCode
                             if (debug) Console.Error.WriteLine("Removed {0}", block);
                             colorBonus[block.Color] = 1;
                             block.Color = Color.Empty;
-                            ActiveBlocks.Remove(block);
                             foreach (var n in block.Neighbors(this).Where(n => n.Color == Color.Skull))
                             {
                                 n.Color = Color.Empty;
-                                ActiveBlocks.Remove(n);
                             }
                             blocks += 1;
                         }
@@ -296,20 +293,6 @@ namespace SmashTheCode
                         if (Field[i, j].Color != Color.Empty)
                         {
                             h1 = Height - j;
-                            //if (h1 > 8)
-                            //{
-                            //    var sb = new StringBuilder();
-                            //    for (int h = 0; h < Height; h++)
-                            //    {
-                            //        for (int w = 0; w < Width; w++)
-                            //        {
-                            //            sb.Append(Field[w, h] + " ");
-                            //        }
-
-                            //        sb.AppendLine();
-                            //    }
-                            //    Console.Error.WriteLine("{0}\nActive: {1}\n{2}", sb.ToString(), i, j);
-                            //}
                             return h1;
                         }
                     }
@@ -325,14 +308,15 @@ namespace SmashTheCode
                 {
                     for (int j = 0; j < Height; j++)
                     {
-                        cache.Field[i, j] = new Block(Field[i, j].Color, Field[i, j].Position);
+                        cache.Field[i, j] = new Block((int)Field[i, j].Color, Field[i, j].Position.X, Field[i, j].Position.Y);
                     }
                 }
+
                 cache.score = score;
                 cache.NuisancePoints = NuisancePoints;
-                cache.ActiveBlocks = ActiveBlocks.ToList();
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal void Load()
             {
                 //Array.Copy(Field, 0, g.Field, 0, Field.Length);
@@ -340,13 +324,12 @@ namespace SmashTheCode
                 {
                     for (int j = 0; j < Height; j++)
                     {
-                        Field[i, j].Color = cache.Field[i, j].Color;
-                        Field[i, j].Position = cache.Field[i, j].Position;
+                        Field[i, j] = new Block((int)cache.Field[i, j].Color, cache.Field[i, j].Position.X, cache.Field[i, j].Position.Y);
                     }
                 }
+
                 score = cache.score;
                 NuisancePoints = cache.NuisancePoints;
-                ActiveBlocks = cache.ActiveBlocks.ToList();
             }
 
             internal bool ApplyEnemyNuisance(int nuisancePoints)
@@ -357,9 +340,9 @@ namespace SmashTheCode
                     {
                         if (Field[i, 0].Color != Color.Empty) return false;
                         Field[i, 0].Color = Color.Skull;
+                        nuisancePoints--;
                     }
                     Gravity();
-                    nuisancePoints -= 6;
                 }
                 return true;
             }
@@ -491,7 +474,7 @@ namespace SmashTheCode
                 //for (int i = 1; i < PopulationSize; i++)
                 //    if (Pop[i].Fitness > best.Fitness) best = Pop[i];
 
-                Console.Error.WriteLine("Best Init: {0}", best.Fitness);
+                //Console.Error.WriteLine("Best Init: {0}", best.Fitness);
                 while (_stopwatch.ElapsedMilliseconds < timelimit)
                 {
                     for (int i = 0; i < PopulationSize; i++)
@@ -527,7 +510,7 @@ namespace SmashTheCode
                     {
                         if (Pop[i].Fitness > best.Fitness)
                         {
-                            Console.Error.WriteLine("B: {0} C: {1}", best.Fitness, Pop[i].Fitness);
+                            //Console.Error.WriteLine("B: {0} C: {1} M:{2}", best.Fitness, Pop[i].Fitness, Pop[i].Genes[0]);
                             bestIndex = i;
                             maxFitness = Pop[i].Fitness;
                         }
@@ -562,6 +545,7 @@ namespace SmashTheCode
         {
             public Gene[] Genes { get; set; }
             public int Fitness { get; set; }
+            public int Nuisance { get; set; }
 
             public Grid Grid { get; set; }
 
@@ -572,11 +556,13 @@ namespace SmashTheCode
                 if (init)
                 {
                     Fitness = int.MinValue;
+                    Nuisance = 0;
                     for (int i = 0; i < Lifespan; i++)
                         Mutate(i, true);
                 }
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Mutate()
             {
                 Mutate(FastRandom.Rnd(Lifespan));
@@ -594,13 +580,14 @@ namespace SmashTheCode
                 Fitness = int.MinValue;
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Shift()
             {
                 for (int i = 1; i < Lifespan; i++)
                 {
                     Genes[i - 1] = Genes[i];
                 }
-                Mutate(Lifespan - 1);
+                Mutate(Lifespan - 1, true);
             }
 
             public void CalcFitness()
@@ -616,18 +603,21 @@ namespace SmashTheCode
                             break;
                         }
                         Grid.RemoveMatches(0);
-                        //Grid.NuisancePoints += (Grid.score - initScore) / 70;
+                        //if (Grid.score > initScore)
+                        //    Console.Error.WriteLine("Move for score: {0}", Genes[i]);
+                        Grid.NuisancePoints += (Grid.score - initScore) / 70;
                         //Grid.score *= (int)Math.Pow(0.8, i);
                     }
 
                     //Console.Error.WriteLine("S-NP:{0} GS {1}", Grid.score, Grid.score);
-                    Fitness = Grid.score + Grid.NuisancePoints - Grid.TallestColumn();
+                    Fitness = Grid.score + Grid.NuisancePoints - 100 * Grid.TallestColumn();
+                    Nuisance = Grid.NuisancePoints;
                     //if (Grid.TallestColumn() > 5) Fitness -= 10000;
 
                     Grid.Load();
                     if (round > 0) _simulations++;
                 }
-                Console.Error.WriteLine("S-NP:{0} GS {1}", Grid.NuisancePoints, Fitness);
+                //Console.Error.WriteLine("S-NP:{0} GS {1}", Grid.NuisancePoints, Fitness);
             }
 
             public int CompareTo(DNA obj)
@@ -637,14 +627,17 @@ namespace SmashTheCode
                 return 1;
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal DNA Clone()
             {
                 DNA dna = new DNA(Grid, false);
                 Genes.CopyTo(dna.Genes, 0);
                 dna.Fitness = Fitness;
+                dna.Nuisance = Nuisance;
                 return dna;
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal DNA Crossover(DNA partner)
             {
                 var genes = new Gene[Lifespan];
@@ -725,12 +718,12 @@ namespace SmashTheCode
                 else
                 {
                     population.UpdateGrid(_myGrid);
-                    population.UpdateGrid(_enemyGrid);
+                    enemyPop.UpdateGrid(_enemyGrid);
                 }
                 _stopwatch = Stopwatch.StartNew();
 
-                //var enemyDna = enemyPop.GetBest(15, 0);
-                _enemyNuisancePoints += _enemyGrid.NuisancePoints;
+                var enemyDna = enemyPop.GetBest(15, 0);
+                _enemyNuisancePoints += enemyDna.Nuisance;
                 Console.Error.WriteLine("NP: {0}", _enemyNuisancePoints);
                 var dna = population.GetBest(80, _enemyNuisancePoints);
                 Console.WriteLine(dna.Genes[0]); // "x": the column in which to drop your blocks
@@ -740,17 +733,18 @@ namespace SmashTheCode
                     _myGrid.ApplyMove(dna.Genes[0], _nextBlocks[0]);
                     _myGrid.RemoveMatches(0, true);
                     var sb = new StringBuilder();
-                    //for (int k = 0; k < Height; k++)
-                    //{
-                    //    for (int j = 0; j < Width; j++)
-                    //    {
-                    //        sb.Append(_myGrid.Field[j, k] + " ");
-                    //    }
+                    for (int k = 0; k < Height; k++)
+                    {
+                        for (int j = 0; j < Width; j++)
+                        {
+                            sb.Append(_myGrid.Field[j, k] + " ");
+                        }
 
-                    //    sb.AppendLine();
-                    //}
-                    Console.Error.WriteLine("{0} {1}", sb.ToString(), _myGrid.score);
+                        sb.AppendLine();
+                    }
+                    Console.Error.WriteLine("{0} {1} M:{2}", sb.ToString(), _myGrid.score, dna.Genes[0]);
                 }
+                if (_enemyNuisancePoints >= 6) _enemyNuisancePoints /= 6;
                 Console.Error.WriteLine("Score after 8: {0}\nAvg Sims: {1}", dna.Fitness, round > 0 ? _simulations / round : 0);
             }
         }
