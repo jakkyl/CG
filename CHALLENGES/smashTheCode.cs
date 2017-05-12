@@ -53,7 +53,7 @@ namespace SmashTheCode
 
         private static int g_seed = 42;
 
-        internal class FastRandom
+        internal struct FastRandom
         {
             public static int fastrand()
             {
@@ -72,7 +72,7 @@ namespace SmashTheCode
             }
         }
 
-        private class Point
+        private struct Point
         {
             public int X { get; set; }
             public int Y { get; set; }
@@ -395,7 +395,7 @@ namespace SmashTheCode
             }
         }
 
-        private class BlockPair
+        private struct BlockPair
         {
             public Block BlockA { get; set; }
             public Block BlockB { get; set; }

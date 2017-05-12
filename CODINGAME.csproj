@@ -78,6 +78,7 @@
     </Content>
     <Compile Include="HELPERS\bsc.cpp" />
     <Content Include="PRACTICE\dontPanic.py" />
+    <Content Include="PRACTICE\dwarfs.js" />
     <Content Include="shadowsOfTheNight.py">
       <Link>shadowsOfTheNight.py</Link>
     </Content>
