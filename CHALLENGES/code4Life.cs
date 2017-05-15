@@ -160,6 +160,18 @@ namespace Code4Life
                 int c = int.Parse(inputs[2]);
                 int d = int.Parse(inputs[3]);
                 int e = int.Parse(inputs[4]);
+                Console.Error.WriteLine("Projects: " + string.Join(",",inputs));
+                sampleData.Add(new SampleData
+                {
+                    CarriedBy = 1,
+                    Cost = new Dictionary<MoleculeType, int>
+                            {
+                                {MoleculeType.A, a}, {MoleculeType.B, b}, {MoleculeType.C, c},
+                                {MoleculeType.D, d}, {MoleculeType.E, e}
+                            },
+                    Diagnosed = true,
+                    Health = 30
+                });            
             }
 
             // game loop
@@ -246,12 +258,13 @@ namespace Code4Life
                     sample.CarriedBy = carriedBy;
                     sample.Dead = false;
                 }
-                sampleData.RemoveAll(d => d.Dead);
+                sampleData.RemoveAll(d => d.Dead && d.Health != 30);
 
                 diagnosis.CloudData.Clear();
                 diagnosis.CloudData.AddRange(sampleData.Where(d => d.CarriedBy == -1));
                 myRobot.SampleData.Clear();
                 enemyRobot.SampleData.Clear();
+                myRobot.SampleData.AddRange(sampleData.Where(d => d.CarriedBy == 0));
                 myRobot.SampleData.AddRange(sampleData.Where(d => d.CarriedBy == 0));
                 enemyRobot.SampleData.AddRange(sampleData.Where(d => d.CarriedBy == 1));
                 myRobot.Carrying = myRobot.SampleData.Count();
@@ -270,7 +283,7 @@ namespace Code4Life
                 if (myRobot.Target is Samples)
                 {
                     var diagnosed = diagnosis.CloudData;
-                    if (diagnosed.Count() > 0 || myRobot.Carrying >= MaxDataFiles) //check if enemy is already there
+                    if (diagnosed.Count() > 0 || myRobot.Carrying >= 1/*MaxDataFiles*/) //check if enemy is already there
                     {
                         myRobot.MoveTo(diagnosis);
                     }
@@ -307,7 +320,30 @@ namespace Code4Life
                     var data = myRobot.SampleData.FirstOrDefault(s => s.Paid.Any(d => d.Value != s.Cost[d.Key] && moleculesAvailable[d.Key] > 0));
                     if (data == null || myRobot.Storage.Sum(d => d.Value) >= MaxMolecules)
                     {
-                        myRobot.MoveTo(laboratory);
+                        Console.Error.WriteLine("Data: " + data);
+                        if (data == null)
+                        {                            
+                            if (myRobot.SampleData.Any(s => s.Paid.Any(d => d.Value != s.Cost[d.Key])))
+                            {
+                                if (diagnosis.CloudData.Count > 0)
+                                {
+                                    myRobot.MoveTo(diagnosis);
+                                }
+                                else
+                                {
+                                    // There are not enough molecules, get another sample
+                                    myRobot.MoveTo(samples);
+                                }
+                            }
+                            else
+                            {
+                                myRobot.MoveTo(laboratory);
+                            }
+                        }
+                        else
+                        {
+                            myRobot.MoveTo(laboratory);
+                        }
                     }
                     else
                     {
@@ -320,18 +356,19 @@ namespace Code4Life
                 else if (myRobot.Target is Laboratory)
                 {
                     var ready = myRobot.SampleData.FirstOrDefault(s => !s.Paid.Any(d => d.Value != s.Cost[d.Key]));
+                    //Not enough molecules to complete
                     if (ready == null)
                     {
-                        if (myRobot.SampleData.Count > 0)
+                        if (myRobot.SampleData.Count > 0 && myRobot.SampleData.Any(s => s.Paid.Any(d => d.Value != s.Cost[d.Key] && moleculesAvailable[d.Key] > 0)))
                         {
                             myRobot.MoveTo(molecules);
                         }
                         else
                         {
                             myRobot.MoveTo(samples);
-                        }
+                        } 
                     }
-                    else
+                    else // Complete
                     {
                         myRobot.Connect(ready.Id.ToString());
                         myRobot.SampleData.Clear();
@@ -339,7 +376,7 @@ namespace Code4Life
                 }
                 else
                 {
-                    myRobot.MoveTo(samples);
+                    myRobot.MoveTo(molecules);
                 }
                 myRobot.PrintAction(myRobot.TargetName);
             }
