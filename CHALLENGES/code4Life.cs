@@ -15,6 +15,9 @@ namespace Code4Life
     {
         private const int MaxDataFiles = 3;
         private const int MaxMolecules = 10;
+        private const int MaxRounds = 200;
+
+        private static Random rand = new Random();
 
         private enum ModuleType
         {
@@ -87,7 +90,7 @@ namespace Code4Life
 
             public bool IsPossible()
             {
-                return myRobot.Storage.All(d => (Cost[d.Key] - (myRobot.Expertise[d.Key] + d.Value)) <= 0 || moleculesAvailable[d.Key] >= (Cost[d.Key] - (myRobot.Expertise[d.Key] + d.Value)));
+                return myRobot.Storage.All(d => d.Value + moleculesAvailable[d.Key] >= Cost[d.Key] - myRobot.Expertise[d.Key]);
             }
 
             public override string ToString()
@@ -161,10 +164,13 @@ namespace Code4Life
         private static Dictionary<MoleculeType, int> moleculesAvailable = new Dictionary<MoleculeType, int>();
         private static List<SampleData> sampleData = new List<SampleData>();
         private static string message = "";
+        private static int round = -1;
 
         private static void Main(string[] args)
         {
             var enemyRobot = new Robot();
+            int rankMin = 1;
+            int rankMax = 1;
 
             string[] inputs;
             int projectCount = int.Parse(Console.ReadLine());
@@ -193,6 +199,7 @@ namespace Code4Life
             // game loop
             while (true)
             {
+                round++;
                 sampleData.ForEach(d => d.Dead = true);
 
                 for (int i = 0; i < 2; i++)
@@ -313,13 +320,15 @@ namespace Code4Life
                     else
                     {
                         message = "grab sample";
-                        string rank = "2";
-                        myRobot.Connect(rank);
+                        if (myRobot.Expertise.Sum(e => e.Value) > 4) { rankMax++; rankMin = 2; }
+                        else if (myRobot.Expertise.Sum(e => e.Value) > 2) { rankMax = 2; rankMin = 1; }
+
+                        myRobot.Connect(Math.Min(rand.Next(rankMin, rankMax), 3).ToString());
                     }
                 }
                 else if (myRobot.Target is Diagnosis)
                 {
-                    var diagnosed = diagnosis.CloudData.Where(d => d.IsPossible());
+                    var diagnosed = diagnosis.CloudData.Where(d => d.IsPossible()).OrderByDescending(d => d.Health);
                     if (diagnosed.Count() > 0 && myRobot.Carrying < MaxDataFiles)
                     {
                         message = "Get cloud";
@@ -347,7 +356,7 @@ namespace Code4Life
                         message += sam.Diagnosed ? "get rid" : "diag";
                         myRobot.Connect(sam.Id.ToString());
                     }
-                    else if (myRobot.SampleData.Any(d => myRobot.CanComplete(d) || (d.Diagnosed && d.IsPossible() && canHoldMore)))
+                    else if (myRobot.Carrying == MaxDataFiles && (myRobot.SampleData.Any(d => myRobot.SampleData.Any(s => myRobot.CanComplete(s) || (d.Diagnosed && d.IsPossible() && canHoldMore)))))
                     {
                         message = "can complete";
                         myRobot.MoveTo(molecules);
@@ -361,19 +370,18 @@ namespace Code4Life
                 else if (myRobot.Target is Molecules)
                 {
                     var data = myRobot.SampleData.Where(s => s.IsPossible() && !myRobot.CanComplete(s))
-                                                 .OrderBy(d => myRobot.Storage.Sum(c => d.Cost[c.Key] - c.Value - myRobot.Expertise[c.Key]))
-                        //.ThenBy(d => d.Cost.Sum(c => c.Value - myRobot.Expertise[c.Key]))
+                                                 .OrderByDescending(d => d.Paid.Sum(c => c.Value - myRobot.Expertise[c.Key]))
+                                                 .ThenBy(d => d.Cost.Sum(c => c.Value - myRobot.Expertise[c.Key]))
                                                  .FirstOrDefault();
-                    if (myRobot.SampleData.Any(s => myRobot.CanComplete(s)))
-                    {
-                        message = "Have enough";
-                        myRobot.MoveTo(laboratory);
-                    }
-                    else if (data == null || myRobot.Storage.Sum(d => d.Value) >= MaxMolecules)
+                    if (data == null || myRobot.Storage.Sum(d => d.Value) >= MaxMolecules)
                     {
                         Console.Error.WriteLine("Data: " + data);
-
-                        if (data == null)
+                        if (myRobot.SampleData.Any(s => myRobot.CanComplete(s)))
+                        {
+                            message = "Have enough";
+                            myRobot.MoveTo(laboratory);
+                        }
+                        else if (data == null)
                         {
                             if (diagnosis.CloudData.Count > 0)
                             {
@@ -395,8 +403,8 @@ namespace Code4Life
                     }
                     else
                     {
-                        Console.Error.WriteLine("Data: " + data.Id + " " + string.Join(",", data));
-                        Console.Error.WriteLine(string.Join(";", data.Cost.Select(d => string.Format("V: {0}, P: {1}, M: {2}", d, data.Paid[d.Key], moleculesAvailable[d.Key] > 0))));
+                        //Console.Error.WriteLine("Data: " + data.Id + " " + string.Join(",", data));
+                        //Console.Error.WriteLine(string.Join(";", data.Cost.Select(d => string.Format("V: {0}, P: {1}, M: {2}", d, data.Paid[d.Key], moleculesAvailable[d.Key] > 0))));
                         var molecule = data.Cost.FirstOrDefault(d => d.Value - myRobot.Expertise[d.Key] > myRobot.Storage[d.Key] && moleculesAvailable[d.Key] > 0);
                         if (molecule.Equals(default(KeyValuePair<MoleculeType, int>)))
                         {
@@ -421,8 +429,17 @@ namespace Code4Life
                         }
                         else
                         {
-                            message = "get another sample";
-                            myRobot.MoveTo(samples);
+                            var diagnosed = diagnosis.CloudData.Where(d => d.IsPossible());
+                            if (diagnosed.Count() > 0 || myRobot.Carrying >= MaxDataFiles) //check if enemy is already there
+                            {
+                                message = diagnosed.Count() > 0 ? "Something at diag" : "holding max";
+                                myRobot.MoveTo(diagnosis);
+                            }
+                            else
+                            {
+                                message = "get another sample";
+                                myRobot.MoveTo(samples);
+                            }
                         }
                     }
                     else // Complete
