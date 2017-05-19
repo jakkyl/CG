@@ -90,7 +90,7 @@ namespace Code4Life
 
             public bool IsPossible()
             {
-                return myRobot.Storage.All(d => d.Value + moleculesAvailable[d.Key] >= Cost[d.Key] - myRobot.Expertise[d.Key]);
+                return myRobot.Storage.All(d => d.Value + (myRobot.Carrying < MaxMolecules ? moleculesAvailable[d.Key] : 0) >= Cost[d.Key] - myRobot.Expertise[d.Key]);
             }
 
             public override string ToString()
@@ -100,6 +100,8 @@ namespace Code4Life
             }
 
             public bool Dead { get; set; }
+
+            public MoleculeType Gain { get; set; }
         }
 
         private class Robot
@@ -153,6 +155,30 @@ namespace Code4Life
             public int Eta { get; set; }
 
             public Dictionary<MoleculeType, int> Expertise { get; set; }
+
+            internal Dictionary<MoleculeType, int> NeededMolecules()
+            {
+                var data = SampleData.Select(d => d.Cost)
+                                     .Where(d => d.Any(c => c.Value > Expertise[c.Key] + Storage[c.Key]))
+                                     .SelectMany(dict => dict)
+                                     .ToLookup(pair => pair.Key, pair => pair.Value)
+                                     .ToDictionary(group => group.Key, group => group.Sum());
+                Console.Error.WriteLine("NEEDED: " + string.Join(",", data));
+                return data;
+            }
+        }
+
+        private static bool SampleWillCompleteProject(SampleData sample)
+        {
+            foreach (var project in projects)
+            {
+                if (myRobot.Expertise.All(e => e.Value + (sample.Gain.Equals(e.Key) ? 1 : 0) >= project.Cost[e.Key]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static Samples samples = new Samples();
@@ -163,6 +189,7 @@ namespace Code4Life
         private static Robot myRobot = new Robot();
         private static Dictionary<MoleculeType, int> moleculesAvailable = new Dictionary<MoleculeType, int>();
         private static List<SampleData> sampleData = new List<SampleData>();
+        private static List<SampleData> projects = new List<SampleData>();
         private static string message = "";
         private static int round = -1;
 
@@ -183,17 +210,16 @@ namespace Code4Life
                 int d = int.Parse(inputs[3]);
                 int e = int.Parse(inputs[4]);
                 Console.Error.WriteLine("Projects: " + string.Join(",", inputs));
-                //sampleData.Add(new SampleData
-                //{
-                //    CarriedBy = 1,
-                //    Cost = new Dictionary<MoleculeType, int>
-                //            {
-                //                {MoleculeType.A, a}, {MoleculeType.B, b}, {MoleculeType.C, c},
-                //                {MoleculeType.D, d}, {MoleculeType.E, e}
-                //            },
-                //    Diagnosed = true,
-                //    Health = 30
-                //});
+                projects.Add(new SampleData
+                {
+                    CarriedBy = 1,
+                    Cost = new Dictionary<MoleculeType, int>
+                            {
+                                {MoleculeType.A, a}, {MoleculeType.B, b}, {MoleculeType.C, c},
+                                {MoleculeType.D, d}, {MoleculeType.E, e}
+                            },
+                    Health = 50
+                });
             }
 
             // game loop
@@ -205,7 +231,6 @@ namespace Code4Life
                 for (int i = 0; i < 2; i++)
                 {
                     inputs = Console.ReadLine().Split(' ');
-                    Console.Error.WriteLine("i=" + i + " " + string.Join(",", inputs));
                     string target = inputs[0];
                     int eta = int.Parse(inputs[1]);
                     int score = int.Parse(inputs[2]);
@@ -284,6 +309,7 @@ namespace Code4Life
                                 {MoleculeType.D, costD}, {MoleculeType.E, costE}
                             };
                     sample.CarriedBy = carriedBy;
+                    sample.Gain = (MoleculeType)Enum.Parse(typeof(MoleculeType), expertiseGain);
                     sample.Dead = false;
                 }
                 sampleData.RemoveAll(d => d.Dead /*&& d.Health != 30*/);
@@ -297,9 +323,20 @@ namespace Code4Life
                 myRobot.Carrying = myRobot.SampleData.Count();
                 enemyRobot.Carrying = enemyRobot.SampleData.Count();
 
-                Console.Error.WriteLine("Samples: {0}", string.Join(",", diagnosis.CloudData));
-                Console.Error.WriteLine("Carried Samples: {0}\n{1}", string.Join(",", myRobot.SampleData), string.Join(",", myRobot.SampleData.Select(d => d.Id + string.Join(",", d.Paid))));
+                foreach (var project in projects.Where(p => !p.Dead))
+                {
+                    if (myRobot.Expertise.All(e => e.Value >= project.Cost[e.Key]) || enemyRobot.Expertise.All(e => e.Value >= project.Cost[e.Key]))
+                    {
+                        project.Dead = true;
+                    }
+                }
+                projects.RemoveAll(p => p.Dead);
+
+                Console.Error.WriteLine("CloudSamples: {0}", string.Join(",", diagnosis.CloudData));
+                Console.Error.WriteLine("Carried Samples: {0}\nPaid: {1}", string.Join(",", myRobot.SampleData), string.Join(",", myRobot.SampleData.Select(d => d.Id + string.Join(",", d.Paid))));
                 Console.Error.WriteLine("Storage: {0}", string.Join(",", myRobot.Storage));
+                Console.Error.WriteLine("Proj Rem: {0}", string.Join(",", projects));
+                Console.Error.WriteLine("Exp: {0}", string.Join(",", myRobot.Expertise));
 
                 if (myRobot.Eta > 0)
                 {
@@ -320,10 +357,11 @@ namespace Code4Life
                     else
                     {
                         message = "grab sample";
-                        if (myRobot.Expertise.Sum(e => e.Value) > 4) { rankMax++; rankMin = 2; }
-                        else if (myRobot.Expertise.Sum(e => e.Value) > 2) { rankMax = 2; rankMin = 1; }
+                        string curRank = "1";
+                        if (myRobot.Expertise.Sum(e => e.Value) >= 10) { curRank = "3"; }
+                        else if (myRobot.Expertise.Sum(e => e.Value) >= 5) { curRank = "2"; }
 
-                        myRobot.Connect(Math.Min(rand.Next(rankMin, rankMax), 3).ToString());
+                        myRobot.Connect(curRank);
                     }
                 }
                 else if (myRobot.Target is Diagnosis)
@@ -332,7 +370,10 @@ namespace Code4Life
                     if (diagnosed.Count() > 0 && myRobot.Carrying < MaxDataFiles)
                     {
                         message = "Get cloud";
-                        var dat = diagnosed.FirstOrDefault(d => myRobot.Storage.All(s => myRobot.CanComplete(d)));
+                        var dat = diagnosed.Where(d => myRobot.Storage.All(s => myRobot.CanComplete(d)))
+                                           .OrderBy(sample => SampleWillCompleteProject(sample) ? 0 : 1)
+                                           .ThenBy(sample => sample.Health)
+                                           .FirstOrDefault();
                         if (dat == null)
                         {
                             dat = diagnosed.OrderBy(d => myRobot.Storage.Sum(c => c.Value - (d.Cost[c.Key] - myRobot.Expertise[c.Key])))
@@ -361,6 +402,14 @@ namespace Code4Life
                         message = "can complete";
                         myRobot.MoveTo(molecules);
                     }
+                    else if (myRobot.Carrying == MaxDataFiles)
+                    {
+                        //throw away the one i'm furthest from completing, with the lowest point value
+                        var sam = myRobot.SampleData.OrderByDescending(d => d.Paid.Sum(c => c.Value - (d.Cost[c.Key] - myRobot.Expertise[c.Key]))).ThenBy(d => d.Health).FirstOrDefault();
+
+                        message += sam.Diagnosed ? "get rid" : "diag";
+                        myRobot.Connect(sam.Id.ToString());
+                    }
                     else
                     {
                         message = "Notta";
@@ -369,11 +418,12 @@ namespace Code4Life
                 }
                 else if (myRobot.Target is Molecules)
                 {
-                    var data = myRobot.SampleData.Where(s => s.IsPossible() && !myRobot.CanComplete(s))
+                    var enemyNeed = enemyRobot.NeededMolecules();
+                    var data = myRobot.SampleData.Where(s => /*s.IsPossible() &&*/ s.Paid.Any(d => d.Value < s.Cost[d.Key] - myRobot.Expertise[d.Key]))
+                                                 .OrderByDescending(s => enemyNeed.Count > 0 ? enemyNeed.Max(m => m.Value) : 0)
                                                  .OrderByDescending(d => d.Paid.Sum(c => c.Value - myRobot.Expertise[c.Key]))
-                                                 .ThenBy(d => d.Cost.Sum(c => c.Value - myRobot.Expertise[c.Key]))
-                                                 .FirstOrDefault();
-                    if (data == null || myRobot.Storage.Sum(d => d.Value) >= MaxMolecules)
+                                                 .ThenBy(d => d.Cost.Sum(c => c.Value - myRobot.Expertise[c.Key]));
+                    if (data.Count() == 0 || myRobot.Storage.Sum(d => d.Value) >= MaxMolecules)
                     {
                         Console.Error.WriteLine("Data: " + data);
                         if (myRobot.SampleData.Any(s => myRobot.CanComplete(s)))
@@ -381,7 +431,7 @@ namespace Code4Life
                             message = "Have enough";
                             myRobot.MoveTo(laboratory);
                         }
-                        else if (data == null)
+                        else if (data.Count() == 0)
                         {
                             if (diagnosis.CloudData.Count > 0)
                             {
@@ -403,16 +453,29 @@ namespace Code4Life
                     }
                     else
                     {
-                        //Console.Error.WriteLine("Data: " + data.Id + " " + string.Join(",", data));
+                        Console.Error.WriteLine("AVAIL: " + string.Join(",", moleculesAvailable));
+                        Console.Error.WriteLine("DATA: " + string.Join(",", data));
                         //Console.Error.WriteLine(string.Join(";", data.Cost.Select(d => string.Format("V: {0}, P: {1}, M: {2}", d, data.Paid[d.Key], moleculesAvailable[d.Key] > 0))));
-                        var molecule = data.Cost.FirstOrDefault(d => d.Value - myRobot.Expertise[d.Key] > myRobot.Storage[d.Key] && moleculesAvailable[d.Key] > 0);
-                        if (molecule.Equals(default(KeyValuePair<MoleculeType, int>)))
+                        bool doneAction = false;
+                        foreach (var datum in data)
                         {
+                            var molecule = datum.Cost.FirstOrDefault(c => moleculesAvailable[c.Key] > 0 && datum.Paid[c.Key] < c.Value - myRobot.Expertise[c.Key]/*d.Value - myRobot.Expertise[d.Key] > myRobot.Storage[d.Key]*/);
+                            Console.Error.WriteLine("Mol: " + molecule + " " + default(KeyValuePair<MoleculeType, int>));
+                            if (!molecule.Equals(default(KeyValuePair<MoleculeType, int>)))
+                            {
+                                message = "Grabbing " + molecule.Key;
+                                myRobot.Connect(Enum.GetName(typeof(MoleculeType), molecule.Key));
+                                datum.Paid[molecule.Key]++;
+                                doneAction = true;
+                                break;
+                            }
+                        }
+
+                        if (!doneAction)
+                        {
+                            message = "OUT";
                             myRobot.MoveTo(laboratory);
                         }
-                        message = "Grabbing " + molecule.Key;
-                        myRobot.Connect(Enum.GetName(typeof(MoleculeType), molecule.Key));
-                        data.Paid[molecule.Key]++;
                     }
                 }
                 else if (myRobot.Target is Laboratory)
@@ -444,7 +507,15 @@ namespace Code4Life
                     }
                     else // Complete
                     {
-                        message = "Fin";
+                        myRobot.Expertise[ready.Gain]++;
+                        foreach (var project in projects)
+                        {
+                            if (myRobot.Expertise.All(e => e.Value >= project.Cost[e.Key]))
+                            {
+                                message = "PROJECT";
+                            }
+                        }
+
                         myRobot.Connect(ready.Id.ToString());
                         myRobot.SampleData.Clear();
                     }
