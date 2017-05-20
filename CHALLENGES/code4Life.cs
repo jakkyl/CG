@@ -158,6 +158,19 @@ namespace Code4Life
 
             internal Dictionary<MoleculeType, int> NeededMolecules()
             {
+                var tempStorage = new Dictionary<MoleculeType, int>(Storage);
+                foreach (var cost in SampleData.Select(d => d.Cost))
+                {
+                    var tempCost = new Dictionary<MoleculeType, int>(cost);
+                    for (int i = 0; i < 5; i++)
+                    {
+                        if (tempStorage[(MoleculeType)i] > 0)
+                        {
+                            var c = Math.Min(tempStorage[(MoleculeType)i], tempCost[(MoleculeType)i]);
+                            tempStorage[(MoleculeType)i] -= c;
+                        }
+                    }
+                }
                 var data = SampleData.Select(d => d.Cost)
                                      .Where(d => d.Any(c => c.Value > Expertise[c.Key] + Storage[c.Key]))
                                      .SelectMany(dict => dict)
@@ -413,16 +426,36 @@ namespace Code4Life
                     else
                     {
                         message = "Notta";
-                        myRobot.MoveTo(samples);
+                        myRobot.MoveTo(molecules);
                     }
                 }
                 else if (myRobot.Target is Molecules)
                 {
                     var enemyNeed = enemyRobot.NeededMolecules();
-                    var data = myRobot.SampleData.Where(s => /*s.IsPossible() &&*/ s.Paid.Any(d => d.Value < s.Cost[d.Key] - myRobot.Expertise[d.Key]))
+
+
+                    var data = myRobot.SampleData//.Where(s => /*s.IsPossible() &&*/ s.Paid.Any(d => d.Value < s.Cost[d.Key] - myRobot.Expertise[d.Key]))
                                                  .OrderByDescending(s => enemyNeed.Count > 0 ? enemyNeed.Max(m => m.Value) : 0)
-                                                 .OrderByDescending(d => d.Paid.Sum(c => c.Value - myRobot.Expertise[c.Key]))
+                       //                          .OrderByDescending(d => d.Paid.Sum(c => c.Value - myRobot.Expertise[c.Key]))
                                                  .ThenBy(d => d.Cost.Sum(c => c.Value - myRobot.Expertise[c.Key]));
+
+
+                    var needed = myRobot.NeededMolecules();
+                    var tempStorage = new Dictionary<MoleculeType, int>(myRobot.Storage);
+                    foreach (var d in data)
+                    {
+                        for (int i = 0; i < 5; i++)
+                        {
+
+                            int net = d.Cost[(MoleculeType)i] - myRobot.Expertise[(MoleculeType)i];
+                            int add = Math.Min(net, tempStorage[(MoleculeType)i]);
+                            d.Paid[(MoleculeType)i] = add;
+                            tempStorage[(MoleculeType)i] -= add;
+                            //if (myRobot.Storage[(MoleculeType)i] > 0)
+                            //myRobot.Storage[(MoleculeType)i] -= d.Cost[(MoleculeType)i];
+                        }
+                    }
+
                     if (data.Count() == 0 || myRobot.Storage.Sum(d => d.Value) >= MaxMolecules)
                     {
                         Console.Error.WriteLine("Data: " + data);
