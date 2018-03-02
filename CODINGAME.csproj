@@ -43,11 +43,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CHALLENGES\bottersOfTheGalaxy.cs" />
     <Compile Include="CHALLENGES\code4Life.cs" />
     <Compile Include="CHALLENGES\codeBusters.cs" />
     <Compile Include="CHALLENGES\codersOfTheCarib.cs" />
     <Compile Include="CHALLENGES\fantasticBits.cs" />
+    <Compile Include="CHALLENGES\meanMax.cs" />
     <Compile Include="CHALLENGES\smashTheCode.cs" />
+    <Compile Include="CHALLENGES\wondevWoman.cs" />
     <Compile Include="codersStrikeBack.cs">
       <Link>codersStrikeBack.cs</Link>
     </Compile>
