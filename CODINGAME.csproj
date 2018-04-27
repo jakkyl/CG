@@ -46,6 +46,7 @@
     <Compile Include="CHALLENGES\bottersOfTheGalaxy.cs" />
     <Compile Include="CHALLENGES\code4Life.cs" />
     <Compile Include="CHALLENGES\codeBusters.cs" />
+    <Compile Include="CHALLENGES\codeRoyale.cs" />
     <Compile Include="CHALLENGES\codersOfTheCarib.cs" />
     <Compile Include="CHALLENGES\fantasticBits.cs" />
     <Compile Include="CHALLENGES\meanMax.cs" />
